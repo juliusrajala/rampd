@@ -14,18 +14,18 @@ import (
 )
 
 const (
-	artistsTab = iota
+	songsTab = iota
 	albumsTab
-	songsTab
+	artistsTab
 	trayTab
 	queueTab
 	playlistsTab
 	dreamTab
 )
 
-var tabNames = [...]string{"Artists", "Albums", "Songs", "Tray", "Queue", "Playlists", "Dream"}
+var tabNames = [...]string{"Songs", "Albums", "Artists", "Tray", "Queue", "Playlists", "Dream"}
 var tabActions = [len(tabNames)]keymap.Action{
-	keymap.Artists, keymap.Albums, keymap.Songs, keymap.Tray, keymap.Queue, keymap.Playlists, keymap.Dream,
+	keymap.Songs, keymap.Albums, keymap.Artists, keymap.Tray, keymap.Queue, keymap.Playlists, keymap.Dream,
 }
 
 type row struct {

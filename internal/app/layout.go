@@ -18,8 +18,15 @@ const (
 	frameChromeHeight = bodyChromeHeight + 3
 )
 
+func (m *model) footerHeight() int {
+	if m.prompt == playlistNamePrompt && m.height >= 6 {
+		return 3 // Keep both the name input and its hints below the status row.
+	}
+	return 2
+}
+
 func (m *model) framed() bool {
-	minHeight := frameChromeHeight + 1
+	minHeight := frameChromeHeight + (m.footerHeight() - 2) + 1
 	if m.showFilter() {
 		minHeight++ // Leave one row for results below the filter.
 	}
@@ -27,17 +34,21 @@ func (m *model) framed() bool {
 }
 
 func (m *model) sidebarWidth() int {
-	if m.framed() && m.width >= 64 && m.height-bodyChromeHeight >= navRows {
+	if m.framed() && m.width >= 64 && m.height-bodyChromeHeight-(m.footerHeight()-2) >= navRows {
 		return navWidth + panelGap
 	}
 	return 0
 }
 
-func (m *model) innerWidth(width int) int {
+func (m *model) textInset() int {
 	if m.framed() {
-		return width - 2*panelInset
+		return panelInset
 	}
-	return width
+	return 0
+}
+
+func (m *model) innerWidth(width int) int {
+	return width - 2*m.textInset()
 }
 
 func (m *model) bodyHeight() int {
@@ -52,7 +63,7 @@ func (m *model) bodyHeight() int {
 	case m.height < 8:
 		chrome = 4
 	}
-	return max(1, m.height-chrome)
+	return max(1, m.height-chrome-(m.footerHeight()-2))
 }
 
 func (m *model) listHeight() int {
@@ -70,7 +81,7 @@ func (m *model) filterPadding() int {
 }
 
 func (m *model) resizeInput() {
-	width := m.width
+	width := m.innerWidth(m.width)
 	if m.inlineInput() {
 		width = m.innerWidth(m.bodyWidth()) - 2*m.filterPadding()
 	}
@@ -119,7 +130,7 @@ func (m *model) navGroups(tabs []string) []string {
 	var lines []string
 	for i, tab := range tabs {
 		switch i {
-		case artistsTab:
+		case songsTab:
 			lines = append(lines, m.styles.Muted.Render("LIBRARY"))
 		case trayTab:
 			lines = append(lines, "", m.styles.Muted.Render("SESSION"))

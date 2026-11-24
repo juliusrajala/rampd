@@ -41,7 +41,11 @@ func (m *model) emptyMessage() (string, []string) {
 		}
 		return directions("No matching entries.", hint(keymap.Cancel, "Clear filter"))
 	case m.tab == trayTab:
-		return directions("Tray is empty.", hint(keymap.AddTray, "Collect tracks while browsing"), hint(keymap.CopyTray, "Copy live queue"))
+		copyHint := hint(keymap.TrayHints, "Switch to Whole Tray to copy")
+		if m.trayWholeMode {
+			copyHint = hint(keymap.CopyTray, "Copy live queue")
+		}
+		return directions("Tray is empty.", hint(keymap.AddTray, "Collect tracks while browsing"), copyHint)
 	case m.tab == queueTab:
 		return directions("Queue is empty.", hint(keymap.Append, "Append tracks while browsing"))
 	case m.tab == dreamTab:

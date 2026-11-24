@@ -48,7 +48,7 @@ Use `MPD_PASSWORD` or set `mpd.password` in a private config file if your server
 
 | Key | Action |
 | --- | --- |
-| `1`–`7`, `Tab` | Switch between Artists, Albums, Songs, Tray, Queue, Playlists, and Dream |
+| `1`–`7`, `Tab` | Switch between Songs, Albums, Artists, Tray, Queue, Playlists, and Dream |
 | `j` / `k`, arrows | Move the selection |
 | `h` / `l` | Go back or open the selection |
 | `Enter` | Open an artist or album, or play a track |
@@ -60,7 +60,7 @@ Use `MPD_PASSWORD` or set `mpd.password` in a private config file if your server
 | `r` / `R` | Toggle MPD random or repeat |
 | `x`, `J` / `K` | Remove the queue entry or move it down/up |
 | `s`, `X` | Shuffle or clear the queue. Clear asks for confirmation |
-| `o` | In Albums or Songs, switch between sorting by title and by artist |
+| `o` | Sort Albums or Songs by title or artist. In Queue, Tray, Dream, or an open playlist, switch the artist and album column without reordering |
 | `:` | Open the command palette. Type to filter, use ↑/↓ to select, then press Enter |
 | `?`, `q` | Show key help or quit |
 | `w` | Save the current queue or Dream preview as a new playlist |
@@ -75,12 +75,13 @@ The filter changes only what you see. Queue and Dream actions that apply to the 
 
 ### Tray
 
-Press `t` while browsing to collect the selected song, album, or artist. This skips songs already in the Tray. The Tray lasts until you quit and does not change playback while you edit it. If you previously bound `t` to another action, change that binding or assign a different key to `add_to_tray`.
+Press `t` while browsing to collect the selected song, album, or artist. This skips songs already in the Tray. The Tray saves automatically to `$XDG_STATE_HOME/rampd/tray.json`, or `~/.local/state/rampd/tray.json` by default. It keeps track order and repeats across restarts. Marks do not persist. Editing or restoring it does not change playback. If a save fails, the player reports the error and keeps the edits in memory. If the saved file cannot be read, the player reports the error and leaves it untouched. If you previously bound `t` to another action, change that binding or assign a different key to `add_to_tray`.
 
-- Press `4` to open the Tray. Use `J` / `K` to move a track and `x` to remove it.
-- Press `C` in Queue or Tray to copy the live queue into the Tray. This keeps duplicate entries and asks before replacing a nonempty Tray.
+- Press `4` to open the Tray. Press `Ctrl+T` to switch between **Edit tracks** and **Whole Tray**. Only the active mode's Tray actions work. Navigation, filtering, and playback controls work in both modes. Press `:` for commands in the active mode. Use `J` / `K` to move the highlighted track and `x` to remove it. Press `v` on each track you want to mark, then use the same keys to move or remove the marked tracks together. Marks survive filtering, and edits include hidden marked tracks. Press `Esc` to clear the filter first, then again to clear the marks.
+- Press `C` in Queue or in the Tray's Whole Tray mode to copy the live queue into the Tray. This keeps duplicate entries and asks before replacing a nonempty Tray.
 - Press `Space` in the Tray to append the full Tray to Queue, or press `w` to save it as a playlist.
 - Press `P` in the Tray to replace the live queue after confirmation. If the current queue entry stays in the Tray, it keeps its playback position. Otherwise the player stops it and does not start another track. The player rejects a replacement if the queue or current track changes before it checks the confirmed edit.
+- In Whole Tray mode, open the command palette with `:` and choose **Shuffle Tray** to shuffle the full Tray, including tracks hidden by the filter. This does not shuffle the live queue.
 - Press `D` in the Tray to preview a Dream based on related artists or genres. The preview leaves the Tray and Queue unchanged.
 
 ### Dream

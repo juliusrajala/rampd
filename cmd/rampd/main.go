@@ -10,6 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"rampd/internal/app"
+	"rampd/internal/music"
+	"rampd/internal/traystore"
 )
 
 func main() {
@@ -24,6 +26,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	path, err := traystore.Path()
+	if err != nil {
+		return fmt.Errorf("locate saved Tray: %w", err)
+	}
+	options.InitialTray, err = traystore.Load(path)
+	if err != nil {
+		return fmt.Errorf("load saved Tray: %w (file was not changed)", err)
+	}
+	options.SaveTray = func(tracks []music.Track) error {
+		return traystore.Save(path, tracks)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	_, err = tea.NewProgram(app.New(ctx, client, options), tea.WithContext(ctx)).Run()

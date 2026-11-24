@@ -73,7 +73,7 @@ func TestSongsSortAndColumnsMatchAlbums(t *testing.T) {
 		{URI: "3", Title: "B Song", Artist: "Alpha", Album: "Mix Three"},
 	}, nil)
 	m.Update(msg)
-	m.Update(keyRune('3'))
+	m.Update(keyRune('1'))
 	m.page().setFilter("mix") // Albums still match, even though the rows hide them.
 	line := ansi.Strip(m.viewRows()[0])
 	if !strings.Contains(line, "A Song") || !strings.Contains(line, "  Zulu") || strings.Contains(line, "Mix One") || strings.Contains(line, "·") {
@@ -97,7 +97,7 @@ func TestSongsSortAndColumnsMatchAlbums(t *testing.T) {
 	if m.mediaOrderLabel() != "title" {
 		t.Fatal("song sort changed album sort")
 	}
-	m.Update(keyRune('3'))
+	m.Update(keyRune('1'))
 	m.Update(keyRune(':'))
 	m.Update(tea.PasteMsg{Content: "sort by title"})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})

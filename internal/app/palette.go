@@ -48,6 +48,9 @@ func (m *model) closePalette() {
 func (m *model) commandRows() []row {
 	var rows []row
 	add := func(action keymap.Action, label string) {
+		if !m.trayActionAvailable(action) {
+			return
+		}
 		rows = append(rows, newRow(string(action), label, m.keys.Key(action)))
 	}
 	add(keymap.Filter, "Filter this list")
@@ -61,6 +64,9 @@ func (m *model) commandRows() []row {
 	add(keymap.Repeat, "Toggle repeat playback")
 
 	item, selected := m.selected()
+	if m.canSwitchTrackColumn() {
+		add(keymap.SortAlbums, m.trackColumnCommand())
+	}
 	switch m.tab {
 	case dreamTab:
 		add(keymap.First, "Generate a Dream preview")
@@ -71,7 +77,11 @@ func (m *model) commandRows() []row {
 			add(keymap.Save, "Save Dream as playlist")
 		}
 	case trayTab:
+		add(keymap.TrayHints, "Switch Tray mode")
 		add(keymap.CopyTray, "Copy live queue to Tray")
+		if len(m.tray) > 1 {
+			add(keymap.ShuffleTray, "Shuffle Tray")
+		}
 		if len(m.tray) > 0 {
 			add(keymap.Append, "Append Tray to queue")
 			add(keymap.Replace, "Replace queue with Tray")
@@ -79,7 +89,14 @@ func (m *model) commandRows() []row {
 			add(keymap.SeedDream, "Generate Dream from Tray")
 		}
 		if selected {
-			add(keymap.Remove, "Remove selected Tray track")
+			add(keymap.MarkTray, "Toggle mark on highlighted Tray track")
+		}
+		if len(m.trayMarks) > 0 {
+			add(keymap.Remove, "Remove marked Tray tracks")
+			add(keymap.MoveUp, "Move marked Tray tracks up")
+			add(keymap.MoveDown, "Move marked Tray tracks down")
+		} else if selected {
+			add(keymap.Remove, "Remove highlighted Tray track")
 			add(keymap.MoveUp, "Move Tray track up")
 			add(keymap.MoveDown, "Move Tray track down")
 		}

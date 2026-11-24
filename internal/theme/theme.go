@@ -11,6 +11,7 @@ type Styles struct {
 	Heading, Muted, Selection, InactiveSelection lipgloss.Style
 	ActiveTab, Divider                           lipgloss.Style
 	AccentText, Shortcut                         lipgloss.Style
+	SongName, ArtistName, AlbumName              lipgloss.Style
 	Online, Offline                              lipgloss.Style
 	ProgressFilled, ProgressEmpty                lipgloss.Style
 	ArtworkMatte                                 lipgloss.Style
@@ -54,6 +55,9 @@ func Synthwave() Styles {
 		ActiveTab:         active,
 		AccentText:        lipgloss.NewStyle().Foreground(pink).Bold(true),
 		Shortcut:          lipgloss.NewStyle().Foreground(cyan).Bold(true),
+		SongName:          lipgloss.NewStyle().Foreground(lipgloss.Color("#F5EFFB")),
+		ArtistName:        lipgloss.NewStyle().Foreground(lipgloss.Color("#CEB5F5")),
+		AlbumName:         lipgloss.NewStyle().Foreground(lipgloss.Color("#EFB69C")),
 		Online:            lipgloss.NewStyle().Foreground(cyan),
 		Offline:           lipgloss.NewStyle().Foreground(lipgloss.Color("#FFAA82")),
 		Divider:           lipgloss.NewStyle().Foreground(lipgloss.Color("#8D61AE")),

@@ -22,6 +22,7 @@ func TestLibraryMetadataColumns(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{}).(*model)
 	m.Update(tea.WindowSizeMsg{Width: 90, Height: 24})
 	m.Update(prepareLibrary(tracks, nil))
+	m.Update(keyRune('3'))
 	check := func(i int, parts ...string) string {
 		t.Helper()
 		line := ansi.Strip(m.viewRows()[i])
@@ -59,7 +60,7 @@ func TestLibraryMetadataColumns(t *testing.T) {
 	if line := check(0, "Song One"); !strings.HasSuffix(line, "3:17") {
 		t.Errorf("missing duration inside album: %q", line)
 	}
-	m.Update(keyRune('3'))
+	m.Update(keyRune('1'))
 	if line := check(0, "Song Four", "Artist B"); !strings.HasSuffix(line, "1:00:01") || strings.Contains(line, "Long") {
 		t.Errorf("Songs should show title, artist and duration, but not the album: %q", line)
 	}

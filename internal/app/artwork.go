@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"rampd/internal/artwork"
-	"rampd/internal/music"
 )
 
 const (
@@ -89,11 +88,18 @@ func (m *model) artworkRows() []string {
 	selected, ok := m.selected()
 	var details []string
 	if ok {
-		details = append(details, m.styles.AccentText.Render(clean(selected.label)))
+		details = append(details, m.rowNameStyle(selected).Render(clean(selected.label)))
 		for _, field := range m.selectionFields(selected) {
 			if field.value != "" {
 				key := m.styles.Shortcut.Width(6).Render(field.label)
-				details = append(details, key+"  "+m.styles.Muted.Render(clean(field.value)))
+				value := m.styles.Muted
+				switch field.label {
+				case "Artist":
+					value = m.styles.ArtistName
+				case "Album":
+					value = m.styles.AlbumName
+				}
+				details = append(details, key+"  "+value.Render(clean(field.value)))
 			}
 		}
 	} else {
@@ -135,14 +141,10 @@ func (m *model) selectionFields(item row) []detailField {
 		}
 	}
 
-	track := item.tracks
-	if m.tab == queueTab && item.position < len(m.queue) && m.queue[item.position].ID == item.id {
-		track = []music.Track{m.queue[item.position].Track}
-	}
-	if len(track) == 0 {
+	t, ok := m.rowTrack(item)
+	if !ok {
 		return nil
 	}
-	t := track[0]
 	fields := []detailField{
 		{"Artist", trackArtist(t)},
 		{"Album", t.Album},

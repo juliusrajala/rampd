@@ -36,6 +36,9 @@ func (m *model) key(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *model) dispatch(key keymap.Action) tea.Cmd {
+	if !m.trayActionAvailable(key) {
+		return nil
+	}
 	for tab, action := range tabActions {
 		if key == action {
 			return m.selectTab(tab)
@@ -70,6 +73,10 @@ func (m *model) dispatch(key keymap.Action) tea.Cmd {
 	case keymap.Back, keymap.Cancel:
 		if key == keymap.Cancel && m.page().filter != "" {
 			m.page().setFilter("")
+			return nil
+		}
+		if key == keymap.Cancel && m.tab == trayTab && !m.trayWholeMode && len(m.trayMarks) > 0 {
+			clear(m.trayMarks)
 			return nil
 		}
 		if stack := m.tabs[m.tab]; len(stack) > 1 {
@@ -114,6 +121,14 @@ func (m *model) dispatch(key keymap.Action) tea.Cmd {
 		return m.addSelectionToPlaylist()
 	case keymap.AddTray:
 		m.addTraySelection()
+	case keymap.TrayHints:
+		if m.tab == trayTab {
+			m.trayWholeMode = !m.trayWholeMode
+		}
+	case keymap.MarkTray:
+		if item, ok := m.selected(); m.tab == trayTab && ok {
+			m.markTray(item)
+		}
 	case keymap.CopyTray:
 		if m.tab == queueTab || m.tab == trayTab {
 			return m.copyQueueToTray()
@@ -151,8 +166,9 @@ func (m *model) dispatch(key keymap.Action) tea.Cmd {
 		return m.act(music.Action{Operation: music.Repeat})
 	case keymap.Remove, keymap.MoveDown, keymap.MoveUp:
 		item, ok := m.selected()
-		if m.tab == trayTab && ok {
-			m.editTray(key, item)
+		if m.tab == trayTab {
+			m.editTray(key)
+			return nil
 		}
 		if m.tab == playlistsTab && m.page().playlist != "" && ok {
 			return m.editPlaylistTrack(key, item)
@@ -170,6 +186,12 @@ func (m *model) dispatch(key keymap.Action) tea.Cmd {
 	case keymap.SortAlbums:
 		if m.onMediaList() {
 			m.toggleMediaSort()
+		} else if m.canSwitchTrackColumn() {
+			m.showAlbumColumn[m.tab] = !m.showAlbumColumn[m.tab]
+		}
+	case keymap.ShuffleTray:
+		if m.tab == trayTab {
+			m.shuffleTray()
 		}
 	case keymap.Shuffle:
 		if m.tab == queueTab && len(m.queue) > 1 {

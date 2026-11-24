@@ -12,6 +12,7 @@ import (
 func TestEscapeClearsFocusedFilter(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{}).(*model)
 	m.Update(prepareLibrary(fixtureTracks, nil))
+	m.Update(keyRune('3'))
 	m.Update(keyRune('/'))
 	m.Update(tea.PasteMsg{Content: "missing"})
 	if len(m.page().rows) != 0 || !m.showFilter() {
@@ -52,6 +53,7 @@ func TestFilteredQueueActionsUseSongID(t *testing.T) {
 func TestFilteredBrowseSurvivesLibraryRefresh(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{}).(*model)
 	m.Update(prepareLibrary(fixtureTracks, nil))
+	m.Update(keyRune('3'))
 	m.page().setFilter("violet")
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})

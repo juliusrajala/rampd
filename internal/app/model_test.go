@@ -53,6 +53,7 @@ func TestBrowseAndAppendAlbum(t *testing.T) {
 	m := New(context.Background(), server, Options{}).(*model)
 	m.connected, m.busy = true, false
 	m.Update(prepareLibrary(fixtureTracks, nil))
+	m.Update(keyRune('3'))
 	m.Update(keyRune('j'))
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !strings.HasSuffix(m.page().title, "/ Violet") {
@@ -98,7 +99,7 @@ func TestSearchInputDoesNotDispatchPlayback(t *testing.T) {
 	if len(server.actions) > 0 || m.busy || len(m.pending) != 0 || m.tab != albumsTab || m.prompt != noPrompt || p.filter != "plum bright" {
 		t.Fatalf("search dispatched an action or did not keep its result: %+v", p)
 	}
-	m.Update(keyRune('1'))
+	m.Update(keyRune('3'))
 	if m.page().filter != "" || len(m.page().rows) != 2 {
 		t.Fatal("filter leaked to another tab")
 	}

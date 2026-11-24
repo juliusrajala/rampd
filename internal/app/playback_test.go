@@ -19,10 +19,10 @@ func TestViewShowsStateWithoutColor(t *testing.T) {
 	m.connected = true
 	m.status = music.Status{State: "play", SongID: 1, Elapsed: 15 * time.Second, Duration: time.Minute}
 	m.queue = []music.Entry{{ID: 1, Track: fixtureTracks[0]}}
-	m.storeArtwork(artworkMsg{uri: fixtureTracks[2].URI})
+	m.storeArtwork(artworkMsg{uri: fixtureTracks[1].URI})
 
 	view := ansi.Strip(m.View().Content)
-	for _, want := range []string{"MPD: online", "▸ [1] Artists", "›   Plum", "Playing · Second", "0:15 / 1:00", "█", "▀ ▀"} {
+	for _, want := range []string{"MPD: online", "▸ [1] Songs", "›   First", "Playing · Second", "0:15 / 1:00", "█", "▀ ▀"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q in colorless view", want)
 		}
@@ -34,7 +34,7 @@ func TestViewShowsStateWithoutColor(t *testing.T) {
 	}
 	m.Update(tea.WindowSizeMsg{Width: 38, Height: 12})
 	view = ansi.Strip(m.View().Content)
-	if strings.Contains(view, "SELECTION") || !strings.Contains(view, "Tab: Artists") {
+	if strings.Contains(view, "SELECTION") || !strings.Contains(view, "Tab: Songs") {
 		t.Errorf("narrow view did not use compact layout: %q", view)
 	}
 }

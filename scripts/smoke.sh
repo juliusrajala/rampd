@@ -30,8 +30,12 @@ ffmpeg -v error -f lavfi -i sine=frequency=880:duration=30 -metadata 'artist=Piz
 ffmpeg -v error -f lavfi -i sine=frequency=660:duration=30 -metadata 'artist=Pizza Artist' -metadata 'album=First Album' -metadata 'title=ZZ Related' "$dir/music/zz-related.flac"
 ffmpeg -v error -f lavfi -i color=red:s=96x64 -frames:v 1 -threads 1 "$dir/music/cover.png"
 printf 'music_directory "%s/music"\nplaylist_directory "%s/playlists"\ndb_file "%s/db"\nbind_to_address "%s/mpd"\naudio_output {\n type "null"\n name "Test"\n}\n' "$dir" "$dir" "$dir" "$dir" > "$dir/mpd.conf"
-tm new-session -d -s app -x 90 -y 24 -e TERM=xterm-256color \
-  env -u MPD_HOST -u MPD_PORT -u MPD_PASSWORD "$binary" -config "$dir/rampd.toml" -host "$dir/mpd"
+start_app() {
+  tm new-session -d -s app -x 100 -y 24 -e TERM=xterm-256color \
+    env -u MPD_HOST -u MPD_PORT -u MPD_PASSWORD XDG_STATE_HOME="$dir/state" \
+    "$binary" -config "$dir/rampd.toml" -host "$dir/mpd"
+}
+start_app
 expect_text() {
   for i in {1..60}; do
     if tm capture-pane -pt app | grep -Fq -- "$1"; then return; fi
@@ -52,8 +56,8 @@ expect_absent() {
 }
 expect_text 'MPD: offline'
 expect_text '╭ Navigation'
-tm capture-pane -pt app | grep -E '^╭ Navigation.*╮  ╭ Artists.*╮  ╭ SELECTION' >/dev/null
-expect_text '▸ [1] Artists'
+tm capture-pane -pt app | grep -E '^╭ Navigation.*╮  ╭ Songs.*╮  ╭ SELECTION' >/dev/null
+expect_text '▸ [1] Songs'
 expect_text '[6] Playlists'
 expect_text 'SESSION'
 expect_text 'MIXES'
@@ -77,11 +81,14 @@ with socket.socket(socket.AF_UNIX) as conn:
 PY
 expect_text 'MPD: online'
 expect_text 'Pizza Artist'
-tm capture-pane -pt app | tail -n 1 | grep -Eq 'MPD: online$'
-tm send-keys -t app Enter Enter Space j Space 5
+tm capture-pane -pt app | grep -B1 '^╭ Playback' | grep -Eq 'MPD: online *$'
+tm send-keys -t app 3 Enter Enter Space j Space 5
 expect_text '›   Smoke Track'
 expect_text 'Zeta Track'
-tm send-keys -t app Enter
+expect_text 'Queue · Artist'
+tm send-keys -t app o
+expect_text 'Queue · Album'
+tm send-keys -t app o Enter
 expect_text 'Playing · Smoke Track'
 tm capture-pane -pt app | grep -E '^│ Playing · Smoke Track.*▄[█ ]{28,}▀ │$' >/dev/null
 expect_text '│ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ │'
@@ -104,18 +111,22 @@ expect_text '[ / pizza smoke ]'
 tm resize-window -t app -x 38 -y 12
 expect_text 'Tab: Queue'
 expect_text '[ / pizza smoke ]'
-expect_text '› ♫ Smoke Track'
+expect_text '› ♫ Smoke Tr'
 tm send-keys -t app Escape
 expect_absent '[ / pizza smoke ]'
-expect_text '› ♫ Smoke Track'
-tm resize-window -t app -x 90 -y 24
-tm send-keys -t app 3 t
+expect_text '› ♫ Smoke Tr'
+tm resize-window -t app -x 100 -y 24
+tm send-keys -t app 1 t
 expect_text 'Added to Tray: 1'
 tm send-keys -t app 5 C
 expect_text 'Replace the Tray with a copy'
 tm send-keys -t app y
 expect_text 'Copied queue to Tray: 2 tracks.'
-tm send-keys -t app J P
+expect_text 'Edit tracks'
+tm send-keys -t app J C-t
+expect_text 'Whole Tray'
+expect_absent 'Edit tracks'
+tm send-keys -t app P
 expect_text 'Replace the live queue with the Tray?'
 tm send-keys -t app y
 expect_text 'Replaced live queue with the Tray.'
@@ -173,6 +184,19 @@ expect_text 'MPD: offline'
 mpd --no-daemon --stderr "$dir/mpd.conf" > "$dir/log" 2>&1 &
 server=$!
 expect_text 'MPD: online'
+tm send-keys -t app 5
+expect_text 'Queue is empty.'
+tm send-keys -t app q
+for i in {1..60}; do
+  if ! tm has-session -t app 2>/dev/null; then break; fi
+  sleep .1
+done
+start_app
+expect_text 'MPD: online'
+tm send-keys -t app 4
+expect_text 'Edit tracks'
+expect_text '›   Zeta Track'
+expect_text 'Smoke Track'
 tm send-keys -t app 5
 expect_text 'Queue is empty.'
 tm send-keys -t app q

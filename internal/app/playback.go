@@ -25,13 +25,9 @@ func (m *model) playbackLine() string {
 	if status.State == "play" || status.State == "pause" {
 		for _, entry := range m.queue {
 			if entry.ID == status.SongID {
-				mode += " · " + clean(trackTitle(entry.Track))
-				name := entry.Artist
-				if name == "" {
-					name = entry.AlbumArtist
-				}
-				if name != "" {
-					artist = " — " + clean(name)
+				mode += " · " + m.styles.SongName.Render(clean(trackTitle(entry.Track)))
+				if name := trackArtist(entry.Track); name != "" {
+					artist = " — " + m.styles.ArtistName.Render(clean(name))
 				}
 				break
 			}

@@ -79,17 +79,18 @@ func TestSelectionRowsShowDetailsForEachKind(t *testing.T) {
 			}
 		}
 	}
+	m.Update(keyRune('3'))
 	check("Plum", "Albums 1", "Songs 1")
 	m.Update(keyRune('2'))
 	check("Bright", "Artist Plum", "Length —", "Songs 1")
-	m.Update(keyRune('3'))
+	m.Update(keyRune('1'))
 	check("First", "Artist Violet", "Album Bright", "Length —", "Genre Jazz")
 }
 
 func TestSelectionSpacingKeepsPrimaryDetails(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
 	m.Update(prepareLibrary(fixtureTracks, nil))
-	m.Update(keyRune('3'))
+	m.Update(keyRune('1'))
 
 	m.Update(tea.WindowSizeMsg{Width: 90, Height: 25})
 	rows := m.artworkRows()
@@ -112,6 +113,7 @@ func TestSelectionArtworkDoesNotFollowPlayback(t *testing.T) {
 	m.status = music.Status{State: "play", SongID: 41}
 	m.queue = []music.Entry{{ID: 41, Track: fixtureTracks[2]}}
 	m.Update(tea.WindowSizeMsg{Width: 90, Height: 24})
+	m.Update(keyRune('3'))
 	_, first := m.Update(prepareLibrary(fixtureTracks, nil))
 	if first == nil {
 		t.Fatal("missing artwork request when the list first loads")

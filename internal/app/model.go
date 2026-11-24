@@ -53,6 +53,7 @@ type model struct {
 	tabs               [len(tabNames)][]page
 	tab                int
 	sortByArtist       [len(tabNames)]bool
+	showAlbumColumn    [len(tabNames)]bool
 	library            []music.Track
 	libraryLoaded      bool
 	libraryLoading     bool
@@ -65,10 +66,14 @@ type model struct {
 	confirmation       *confirmation
 	showHelp           bool
 
-	tray         []trayEntry
-	trayNextKey  int
-	trayRevision uint64
-	trayCopying  bool
+	tray          []trayEntry
+	trayNextKey   int
+	trayMarks     map[int]bool
+	trayWholeMode bool
+	trayRevision  uint64
+	trayCopying   bool
+	saveTray      func([]music.Track) error
+	traySaveErr   error
 
 	dreamStrategy dream.Strategy
 	dreamCount    int
@@ -114,6 +119,8 @@ type Options struct {
 	DreamCount    int
 	Artwork       bool
 	Keys          keymap.Bindings
+	InitialTray   []music.Track
+	SaveTray      func([]music.Track) error
 }
 
 type confirmation struct {
@@ -146,6 +153,11 @@ func New(ctx context.Context, server backend, options Options) tea.Model {
 	for i, title := range tabNames {
 		m.tabs[i] = []page{{title: title}}
 	}
+	m.saveTray = options.SaveTray
+	for _, track := range options.InitialTray {
+		m.addTrayEntry(music.Entry{ID: -1, Track: track})
+	}
+	m.updateTrayRows()
 	return m
 }
 

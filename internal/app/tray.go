@@ -2,6 +2,8 @@ package app
 
 import (
 	"fmt"
+	"math/rand/v2"
+	"slices"
 	"strconv"
 
 	tea "charm.land/bubbletea/v2"
@@ -20,6 +22,21 @@ type trayCopyMsg struct {
 	queue    []music.Entry
 	revision uint64
 	err      error
+}
+
+// Keep the mode rules shared by key dispatch and the command palette.
+func (m *model) trayActionAvailable(action keymap.Action) bool {
+	if m.tab != trayTab {
+		return true
+	}
+	switch action {
+	case keymap.CopyTray, keymap.Append, keymap.Replace, keymap.Save, keymap.SeedDream, keymap.ShuffleTray:
+		return m.trayWholeMode
+	case keymap.MarkTray, keymap.MoveDown, keymap.MoveUp, keymap.Remove, keymap.SortAlbums, keymap.AddPlaylist:
+		return !m.trayWholeMode
+	default:
+		return true
+	}
 }
 
 func (m *model) trayTracks() []music.Track {
@@ -56,8 +73,8 @@ func (m *model) addTraySelection() {
 		m.notice = "Selection already in Tray."
 		return
 	}
-	m.updateTrayRows()
 	m.notice = fmt.Sprintf("Added to Tray: %d · Total: %d", added, len(m.tray))
+	m.trayChanged()
 }
 
 func (m *model) addTrayEntry(entry music.Entry) {
@@ -77,25 +94,76 @@ func (m *model) updateTrayRows() {
 	m.tabs[trayTab][0].setRows(rows)
 }
 
-func (m *model) editTray(action keymap.Action, item row) {
-	pos := item.position
+func (m *model) markTray(item row) {
+	key := m.tray[item.position].key
+	if m.trayMarks[key] {
+		delete(m.trayMarks, key)
+		return
+	}
+	if m.trayMarks == nil {
+		m.trayMarks = make(map[int]bool)
+	}
+	m.trayMarks[key] = true
+}
+
+func (m *model) editTray(action keymap.Action) {
+	item, ok := m.selected()
+	picked := m.trayMarks
+	if len(picked) == 0 {
+		if !ok {
+			return
+		}
+		picked = map[int]bool{m.tray[item.position].key: true}
+	}
+
+	before := len(m.tray)
 	switch action {
 	case keymap.Remove:
-		copy(m.tray[pos:], m.tray[pos+1:])
-		m.tray[len(m.tray)-1] = trayEntry{}
-		m.tray = m.tray[:len(m.tray)-1]
+		m.tray = slices.DeleteFunc(m.tray, func(entry trayEntry) bool { return picked[entry.key] })
+		clear(m.trayMarks)
+		m.notice = fmt.Sprintf("Removed from Tray: %d", before-len(m.tray))
 	case keymap.MoveUp:
-		if pos == 0 {
-			return
-		}
-		m.tray[pos], m.tray[pos-1] = m.tray[pos-1], m.tray[pos]
+		// Walk in the direction of the move to shift each marked run once.
+		moveTrayEntries(m.tray, picked, -1)
 	case keymap.MoveDown:
-		if pos == len(m.tray)-1 {
-			return
-		}
-		m.tray[pos], m.tray[pos+1] = m.tray[pos+1], m.tray[pos]
+		moveTrayEntries(m.tray, picked, 1)
 	}
+	m.trayChanged()
+}
+
+func (m *model) shuffleTray() {
+	if len(m.tray) < 2 {
+		return
+	}
+	rand.Shuffle(len(m.tray), func(i, j int) {
+		m.tray[i], m.tray[j] = m.tray[j], m.tray[i]
+	})
+	m.notice = "Shuffled Tray."
+	m.trayChanged()
+}
+
+func (m *model) trayChanged() {
 	m.updateTrayRows()
+	if m.saveTray != nil {
+		// Finish the small local write before accepting another edit or quit.
+		m.traySaveErr = m.saveTray(m.trayTracks())
+		if m.traySaveErr != nil {
+			m.notice = fmt.Sprintf("Tray not saved: %v", m.traySaveErr)
+		}
+	}
+}
+
+func moveTrayEntries(entries []trayEntry, picked map[int]bool, delta int) {
+	for step := 1; step < len(entries); step++ {
+		from := step
+		if delta > 0 {
+			from = len(entries) - 1 - step
+		}
+		to := from + delta
+		if picked[entries[from].key] && !picked[entries[to].key] {
+			entries[from], entries[to] = entries[to], entries[from]
+		}
+	}
 }
 
 func (m *model) copyQueueToTray() tea.Cmd {
@@ -133,15 +201,16 @@ func (m *model) applyTrayCopy(msg trayCopyMsg) {
 		return
 	}
 	m.tray = nil
+	clear(m.trayMarks)
 	for _, entry := range msg.queue {
 		m.addTrayEntry(entry)
 	}
 	m.tabs[trayTab][0].setFilter("")
-	m.updateTrayRows()
 	if (m.tab == queueTab || m.tab == trayTab) && m.prompt == noPrompt && m.confirmation == nil && !m.showHelp {
 		m.tab = trayTab
 	}
 	m.notice = fmt.Sprintf("Copied queue to Tray: %d tracks.", len(msg.queue))
+	m.trayChanged()
 }
 
 func (m *model) confirmTrayReplacement() {

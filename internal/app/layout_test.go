@@ -13,8 +13,8 @@ import (
 	"rampd/internal/theme"
 )
 
-func TestConnectionStatusInBottomRight(t *testing.T) {
-	m := New(context.Background(), &fakeBackend{}, Options{}).(*model)
+func TestConnectionStatusAlignsWithMainPanel(t *testing.T) {
+	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
 	for _, size := range []tea.WindowSizeMsg{{Width: 90, Height: 24}, {Width: 38, Height: 12}, {Width: 18, Height: 5}} {
 		m.Update(size)
 		for _, state := range []string{"connecting", "online", "offline"} {
@@ -24,12 +24,16 @@ func TestConnectionStatusInBottomRight(t *testing.T) {
 			view := m.View()
 			lines := strings.Split(ansi.Strip(view.Content), "\n")
 			status := "MPD: " + state
-			last := lines[len(lines)-1]
-			if !strings.HasSuffix(last, status) || ansi.StringWidth(last) != size.Width {
-				t.Errorf("status not at the right edge at %dx%d: %q", size.Width, size.Height, last)
+			_, statusLine := findStatusLine(lines, status)
+			if !strings.HasSuffix(statusLine, status) || ansi.StringWidth(statusLine) != m.sidebarWidth()+m.bodyWidth() {
+				t.Errorf("status not at the main panel right edge at %dx%d: %q", size.Width, size.Height, statusLine)
 			}
-			if strings.Contains(strings.Join(lines[:len(lines)-1], "\n"), status) {
-				t.Errorf("duplicate status outside footer: %q", view.Content)
+			left := strings.Repeat(" ", m.sidebarWidth())
+			if !strings.HasPrefix(statusLine, left+"A") && !strings.HasPrefix(statusLine, left+"…") {
+				t.Errorf("notice not at the main panel left edge: %q", statusLine)
+			}
+			if strings.Count(view.Content, status) != 1 || strings.Contains(lines[len(lines)-1], status) {
+				t.Errorf("status should appear once, above the controls: %q", view.Content)
 			}
 		}
 	}
@@ -38,8 +42,17 @@ func TestConnectionStatusInBottomRight(t *testing.T) {
 	}
 }
 
+func findStatusLine(lines []string, status string) (int, string) {
+	for i, line := range lines {
+		if strings.HasSuffix(line, status) {
+			return i, line
+		}
+	}
+	return -1, ""
+}
+
 func TestNavigationHighlightsConfiguredKeys(t *testing.T) {
-	keys, err := keymap.New(map[string][]string{"artists": {"f"}, "albums": {"u"}})
+	keys, err := keymap.New(map[string][]string{"songs": {"f"}, "albums": {"u"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +60,7 @@ func TestNavigationHighlightsConfiguredKeys(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 90, Height: 24})
 	view := m.View().Content
 	for _, want := range []string{
-		m.styles.Shortcut.Render("[f]") + " " + m.styles.ActiveTab.Render("Artists"),
+		m.styles.Shortcut.Render("[f]") + " " + m.styles.ActiveTab.Render("Songs"),
 		m.styles.Shortcut.Render("[u]") + " Albums",
 	} {
 		if !strings.Contains(view, want) {
@@ -82,20 +95,27 @@ func TestDevelopmentPanelOutlines(t *testing.T) {
 			if len(lines) != tc.height {
 				t.Fatalf("expected %d rows, got %d", tc.height, len(lines))
 			}
-			for _, line := range lines[:len(lines)-2] {
+			statusRow, _ := findStatusLine(lines, "MPD: connecting")
+			if statusRow < 0 || !strings.HasPrefix(lines[statusRow+1], "╭ Playback") {
+				t.Fatal("status should sit just above Playback")
+			}
+			for i, line := range lines[:len(lines)-1] {
+				if i == statusRow || strings.TrimSpace(line) == "" {
+					continue
+				}
 				if width := ansi.StringWidth(line); width != tc.width {
 					t.Errorf("expected %d columns, got %d: %q", tc.width, width, line)
 				}
 			}
-			if hint := lines[len(lines)-1]; !strings.HasPrefix(hint, "[/] Filter") {
+			if hint := lines[len(lines)-1]; !strings.HasPrefix(hint, "  [/] Filter") {
 				t.Fatalf("key hints should be below the playback border: %q", hint)
 			}
 			if tc.wantPanels == 4 {
-				if !strings.HasPrefix(view, "╭ Navigation") || !strings.Contains(lines[0], "╮  ╭ Artists") ||
+				if !strings.HasPrefix(view, "╭ Navigation") || !strings.Contains(lines[0], "╮  ╭ Songs") ||
 					!strings.Contains(lines[0], "╮  ╭ SELECTION") {
 					t.Fatal("navigation, content, and artwork should share the same top row")
 				}
-				for i, label := range []string{"LIBRARY", "▸ [1] Artists", "[2] Albums", "[3] Songs", "",
+				for i, label := range []string{"LIBRARY", "▸ [1] Songs", "[2] Albums", "[3] Artists", "",
 					"SESSION", "[4] Tray", "[5] Queue", "", "MIXES", "[6] Playlists", "[7] Dream"} {
 					if !strings.Contains(strings.SplitN(lines[i+1], "│  │", 2)[0], label) {
 						t.Errorf("missing sidebar entry %q on row %d: %q", label, i+1, lines[i+1])
@@ -122,11 +142,11 @@ func TestSavePromptStaysBelowPlaybackFrame(t *testing.T) {
 	m.namePlaylist(music.Action{Operation: music.SaveQueue})
 	view := m.View()
 	cursor := view.Cursor
-	if cursor == nil || cursor.X != len("Save as: ") || cursor.Y != 22 {
+	if cursor == nil || cursor.X != panelInset+len("Save as: ") || cursor.Y != 22 {
 		t.Fatalf("wrong save cursor position: %+v", cursor)
 	}
 	lines := strings.Split(ansi.Strip(view.Content), "\n")
-	if !strings.HasPrefix(lines[cursor.Y-1], "╰") || !strings.HasPrefix(lines[cursor.Y], "Save as: ") {
+	if !strings.HasPrefix(lines[cursor.Y-1], "╰") || !strings.HasPrefix(lines[cursor.Y], "  Save as: ") {
 		t.Fatal("save prompt should be outside the playback frame")
 	}
 }

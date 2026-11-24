@@ -49,8 +49,13 @@ func (m *model) View() tea.View {
 		tabLine = fmt.Sprintf("Tab: %s", tabNames[m.tab])
 	}
 	title := clean(m.page().title)
+	if m.tab == trayTab && m.prompt != palettePrompt && len(m.trayMarks) > 0 {
+		title += fmt.Sprintf(" · %d marked", len(m.trayMarks))
+	}
 	if m.onMediaList() {
 		title += " · by " + m.mediaOrderLabel()
+	} else if m.canSwitchTrackColumn() {
+		title += " · " + m.trackColumnName()
 	}
 	var rows, footer []string
 	if m.showHelp {
@@ -66,14 +71,23 @@ func (m *model) View() tea.View {
 	rows = append(rows, make([]string, m.bodyHeight()-len(rows))...)
 	playback := m.playbackWithProgress()
 	var inputRow int
+	notice := ""
+	footerHeight := m.footerHeight()
+	showStatus := m.height >= 5 && (m.prompt != playlistNamePrompt || footerHeight > 2)
 	switch {
 	case m.prompt == playlistNamePrompt:
 		footer = append(footer, m.input.View(), joinHints(m.shortcut("Enter", "Confirm"), m.shortcut("Esc", "Cancel")))
 	case m.confirmation != nil:
 		footer = append(footer, joinHints(m.styles.AccentText.Render(m.confirmation.message), m.shortcut("y", "Confirm"), m.styles.Muted.Render("Any other key cancels")), "")
+	case m.tab == trayTab && m.prompt == noPrompt && !m.showHelp:
+		footer = append(footer, m.trayFooter())
+		notice = m.notice
+		if m.traySaveErr != nil {
+			notice = fmt.Sprintf("Tray not saved: %v", m.traySaveErr)
+		}
 	default:
 		hint := m.actionHints()
-		notice := m.notice
+		notice = m.notice
 		if m.tab == dreamTab && m.dreamLoading {
 			notice = "Generating a Dream preview…"
 		}
@@ -84,7 +98,7 @@ func (m *model) View() tea.View {
 			hint = joinHints(m.styles.Shortcut.Render("[↑] [↓]")+" "+m.styles.Muted.Render("Select"),
 				m.shortcut("Enter", "Run"), m.shortcut("Esc", "Close"))
 		}
-		footer = append(footer, clean(notice), hint)
+		footer = append(footer, hint)
 	}
 
 	var lines []string
@@ -96,33 +110,36 @@ func (m *model) View() tea.View {
 		}
 		inputRow = len(lines) + 1 // First line inside the content panel.
 		lines = append(lines, m.framedBody(title, rows, tabs)...)
-		lines = append(lines, m.frame("Playback", m.width, []string{playback})...)
 	case m.height < 8:
 		inputRow = 1
 		lines = append([]string{heading}, rows...)
-		lines = append(lines, playback)
 	default:
 		m.joinArtwork(rows)
 		lines = []string{tabLine, m.pixelRule(m.width), heading}
 		inputRow = len(lines)
 		lines = append(lines, rows...)
+	}
+	if showStatus {
+		lines = append(lines, m.statusLine(notice))
+		footerHeight--
+	}
+	if m.framed() {
+		lines = append(lines, m.frame("Playback", m.width, []string{playback})...)
+	} else {
 		lines = append(lines, playback)
 	}
 	if !m.inlineInput() {
 		inputRow = len(lines)
 	}
-	lines = append(lines, footer...)
+	for _, line := range fitRows(footer, footerHeight) {
+		lines = append(lines, m.insetFooter(line))
+	}
 	if len(lines) > m.height {
 		if (m.prompt != noPrompt || m.confirmation != nil) && m.height > 0 && inputRow >= m.height {
 			lines[m.height-1] = lines[inputRow]
 			inputRow = m.height - 1
 		}
 		lines = lines[:m.height]
-	}
-	last := len(lines) - 1
-	// On very short terminals, keep a focused prompt or confirmation visible.
-	if last != inputRow || m.prompt == noPrompt && m.confirmation == nil {
-		lines[last] = m.statusFooter(lines[last])
 	}
 	for i, line := range lines {
 		lines[i] = ansi.Truncate(line, m.width, "…")
@@ -138,7 +155,7 @@ func (m *model) View() tea.View {
 					cursor.X += panelInset + m.sidebarWidth()
 				}
 			} else {
-				cursor.X = min(cursor.X, m.width-1)
+				cursor.X = m.textInset() + min(cursor.X, m.innerWidth(m.width)-1)
 			}
 			cursor.Y = inputRow
 			view.Cursor = cursor
@@ -147,7 +164,11 @@ func (m *model) View() tea.View {
 	return view
 }
 
-func (m *model) statusFooter(left string) string {
+func (m *model) insetFooter(line string) string {
+	return strings.Repeat(" ", m.textInset()) + ansi.Truncate(line, m.innerWidth(m.width), "…")
+}
+
+func (m *model) statusLine(notice string) string {
 	label, style := "connecting", m.styles.Muted
 	switch {
 	case m.connected:
@@ -155,11 +176,12 @@ func (m *model) statusFooter(left string) string {
 	case m.connectionFailed:
 		label, style = "offline", m.styles.Offline
 	}
-	status := ansi.Truncate("MPD: "+label, m.width, "…")
-	statusWidth := ansi.StringWidth(status)
-	left = ansi.Truncate(left, max(0, m.width-statusWidth-2), "…")
-	gap := m.width - statusWidth - ansi.StringWidth(left)
-	return left + strings.Repeat(" ", gap) + style.Render(status)
+	width := m.bodyWidth()
+	status := ansi.Truncate("MPD: "+label, width, "…")
+	space := width - ansi.StringWidth(status)
+	left := ansi.Truncate(clean(notice), max(0, space-2), "…")
+	return strings.Repeat(" ", m.sidebarWidth()) + m.styles.Muted.Render(left) +
+		strings.Repeat(" ", space-ansi.StringWidth(left)) + style.Render(status)
 }
 
 func (m *model) viewRows() []string {
@@ -178,12 +200,18 @@ func (m *model) viewRows() []string {
 		marker := " "
 		if browsing && m.tab == queueTab && m.status.State != "stop" && row.id == m.status.SongID {
 			marker = "♫"
+		} else if browsing && m.tab == trayTab && m.trayMarks[m.tray[row.position].key] {
+			marker = "✓"
 		}
 		prefix := "  "
+		label := clean(row.label)
+		if browsing && !selected {
+			label = m.rowNameStyle(row).Render(label)
+		}
 		if selected {
 			prefix = "› "
 		}
-		title := prefix + marker + " " + clean(row.label)
+		title := prefix + marker + " " + label
 		var line string
 		if artistList {
 			line = m.artistRow(title, row, width, selected)
@@ -195,6 +223,7 @@ func (m *model) viewRows() []string {
 			if m.prompt != noPrompt || m.confirmation != nil {
 				style = m.styles.InactiveSelection
 			}
+			// Render the highlight once so inline colors cannot break the background.
 			line = style.Width(width).Render(line)
 		}
 		lines = append(lines, line)
@@ -229,17 +258,18 @@ func (m *model) mediaRow(title string, row row, width int, selected bool) string
 	}
 
 	const timeWidth = 8
-	artistColumn := row.children != nil || m.tab == songsTab
+	separateColumn := row.children != nil || m.tab == songsTab || m.canSwitchTrackColumn()
 	timed := len(row.tracks) > 0 || m.tab == queueTab
 	mainWidth := width
 	if timed && width >= 22 {
 		mainWidth -= timeWidth + 2
 	}
-	if detail := clean(row.detail); detail != "" {
+	detail := m.mediaRowDetail(row, selected)
+	if detail != "" {
 		switch {
-		case artistColumn && mainWidth >= 16:
+		case separateColumn && mainWidth >= 16:
 			title = alignMediaRow(title, detail, mainWidth)
-		case !artistColumn:
+		case !separateColumn:
 			title += "  ·  " + detail
 		}
 	}
