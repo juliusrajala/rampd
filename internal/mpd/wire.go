@@ -95,19 +95,23 @@ func (c command) line(out *strings.Builder) error {
 }
 
 func (w *wire) runList(commands []command) error {
+	_, err := w.queryList(commands)
+	return err
+}
+
+func (w *wire) queryList(commands []command) ([]field, error) {
 	if len(commands) == 0 {
-		return nil
+		return nil, nil
 	}
 	var out strings.Builder
 	out.WriteString("command_list_begin\n")
 	for _, c := range commands {
 		if err := c.line(&out); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	out.WriteString("command_list_end\n")
-	_, err := w.exchange(out.String(), "command list")
-	return err
+	return w.exchange(out.String(), "command list")
 }
 
 func (w *wire) query(name string, args ...string) ([]field, error) {
@@ -131,7 +135,8 @@ func (w *wire) exchange(request, name string) ([]field, error) {
 		case line == "OK":
 			return fields, nil
 		case strings.HasPrefix(line, "ACK "):
-			return nil, ackError(line)
+			// Earlier commands in a list may already have returned data.
+			return fields, ackError(line)
 		}
 		key, value, ok := strings.Cut(line, ": ")
 		if !ok {

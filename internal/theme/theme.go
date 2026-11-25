@@ -2,6 +2,11 @@
 package theme
 
 import (
+	"encoding/hex"
+	"fmt"
+	"image/color"
+	"maps"
+
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
 )
@@ -21,54 +26,74 @@ type Styles struct {
 	PanelBorder                                  lipgloss.Style
 }
 
-// Development outlines the synthwave panels for layout work.
-func Development() Styles {
-	styles := Synthwave()
-	styles.OutlinePanels = true
-	styles.PanelBorder = lipgloss.NewStyle().Foreground(lipgloss.Color("#D8B4FE"))
-	return styles
+var synthwave = map[string]string{
+	"heading_text": "#FFE0F7", "heading_background": "#40225E",
+	"muted": "#B29AC9", "accent": "#FF8CC9", "shortcut": "#77F5E5",
+	"selection_text": "#180E2A", "selection_background": "#FF8CC9",
+	"active_tab_text": "#180E2A", "active_tab_background": "#77F5E5",
+	"song": "#F5EFFB", "artist": "#CEB5F5", "album": "#EFB69C",
+	"panel_border": "#D8B4FE", "divider": "#8D61AE",
+	"online": "#77F5E5", "offline": "#FFAA82",
+	"progress_played": "#77F5E5", "progress_unplayed": "#3A3743",
+	"artwork_background": "#180E2A",
+	"motif_top":          "#F95DB5", "motif_middle": "#FF7FB2", "motif_bottom": "#FFAA82",
 }
 
-// Synthwave returns the built-in player theme.
-func Synthwave() Styles {
-	ink := lipgloss.Color("#180E2A")
-	violet := lipgloss.Color("#40225E")
-	pink := lipgloss.Color("#FF8CC9")
-	cyan := lipgloss.Color("#77F5E5")
-	pale := lipgloss.Color("#FFE0F7")
-	slate := lipgloss.Color("#B29AC9")
+// Default returns the built-in Synthwave styles.
+func Default() Styles {
+	return makeStyles(synthwave)
+}
 
-	heading := lipgloss.NewStyle().Foreground(pale).Background(violet).Bold(true)
-	active := lipgloss.NewStyle().Foreground(ink).Background(cyan).Bold(true)
-	muted := lipgloss.NewStyle().Foreground(slate)
-	progress := lipgloss.NewStyle().Background(lipgloss.Color("#241539"))
+// FromConfig applies validated color overrides without changing the defaults.
+func FromConfig(overrides map[string]string) (Styles, error) {
+	palette := maps.Clone(synthwave)
+	for role, value := range overrides {
+		if _, ok := palette[role]; !ok {
+			return Styles{}, fmt.Errorf("unknown theme setting %q", role)
+		}
+		if len(value) != 7 || value[0] != '#' {
+			return Styles{}, fmt.Errorf("theme.%s must be a #RRGGBB color", role)
+		}
+		if _, err := hex.DecodeString(value[1:]); err != nil {
+			return Styles{}, fmt.Errorf("theme.%s must be a #RRGGBB color", role)
+		}
+		palette[role] = value
+	}
+	return makeStyles(palette), nil
+}
+
+func makeStyles(palette map[string]string) Styles {
+	value := func(role string) color.Color { return lipgloss.Color(palette[role]) }
+	foreground := func(role string) lipgloss.Style { return lipgloss.NewStyle().Foreground(value(role)) }
+	background := func(role string) lipgloss.Style { return lipgloss.NewStyle().Background(value(role)) }
+
+	heading := foreground("heading_text").Background(value("heading_background")).Bold(true)
+	muted := foreground("muted")
 	input := textinput.DefaultDarkStyles()
-	input.Focused.Prompt = lipgloss.NewStyle().Foreground(cyan).Bold(true)
+	input.Focused.Prompt = foreground("shortcut").Bold(true)
 	input.Focused.Placeholder = muted
-	input.Cursor.Color = cyan
+	input.Cursor.Color = value("shortcut")
 
 	return Styles{
 		Heading:           heading,
 		Muted:             muted,
-		Selection:         lipgloss.NewStyle().Foreground(ink).Background(pink).Bold(true),
+		Selection:         foreground("selection_text").Background(value("selection_background")).Bold(true),
 		InactiveSelection: heading,
-		ActiveTab:         active,
-		AccentText:        lipgloss.NewStyle().Foreground(pink).Bold(true),
-		Shortcut:          lipgloss.NewStyle().Foreground(cyan).Bold(true),
-		SongName:          lipgloss.NewStyle().Foreground(lipgloss.Color("#F5EFFB")),
-		ArtistName:        lipgloss.NewStyle().Foreground(lipgloss.Color("#CEB5F5")),
-		AlbumName:         lipgloss.NewStyle().Foreground(lipgloss.Color("#EFB69C")),
-		Online:            lipgloss.NewStyle().Foreground(cyan),
-		Offline:           lipgloss.NewStyle().Foreground(lipgloss.Color("#FFAA82")),
-		Divider:           lipgloss.NewStyle().Foreground(lipgloss.Color("#8D61AE")),
-		ProgressFilled:    progress.Foreground(cyan),
-		ProgressEmpty:     lipgloss.NewStyle().Background(lipgloss.Color("#3A3743")),
-		ArtworkMatte:      lipgloss.NewStyle().Background(ink),
-		Motif: [3]lipgloss.Style{
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#F95DB5")),
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#FF7FB2")),
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#FFAA82")),
-		},
-		Input: input,
+		ActiveTab:         foreground("active_tab_text").Background(value("active_tab_background")).Bold(true),
+		AccentText:        foreground("accent").Bold(true),
+		Shortcut:          foreground("shortcut").Bold(true),
+		SongName:          foreground("song"),
+		ArtistName:        foreground("artist"),
+		AlbumName:         foreground("album"),
+		Online:            foreground("online"),
+		Offline:           foreground("offline"),
+		Divider:           foreground("divider"),
+		ProgressFilled:    foreground("progress_played"),
+		ProgressEmpty:     background("progress_unplayed"),
+		ArtworkMatte:      background("artwork_background"),
+		Motif:             [3]lipgloss.Style{foreground("motif_top"), foreground("motif_middle"), foreground("motif_bottom")},
+		Input:             input,
+		OutlinePanels:     true,
+		PanelBorder:       foreground("panel_border"),
 	}
 }

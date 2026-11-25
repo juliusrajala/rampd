@@ -98,8 +98,12 @@ func (m *model) trayFooter() string {
 	h := m.actionHint
 	switchMode := h(keymap.TrayHints, "Mode")
 	parts := []string{switchMode, m.styles.AccentText.Render(label)}
-	if m.width < 90 || switchMode == "" {
-		parts = append(parts, h(keymap.Commands, "Commands"))
+	if width := m.innerWidth(m.bodyWidth()); width < 65 || switchMode == "" {
+		label := "Commands"
+		if width < 42 {
+			label = "Menu"
+		}
+		parts = append(parts, h(keymap.Commands, label))
 	}
 	return strings.Join(nonemptyHints(append(parts, actions...)), "  ")
 }
@@ -110,7 +114,7 @@ func (m *model) actionHints() string {
 	if m.showFilter() {
 		actions = append(actions, h(keymap.Cancel, "Clear filter"))
 	}
-	actions = append(actions, h(keymap.Filter, "Filter"))
+	actions = append(actions, h(keymap.Filter, "Filter"), h(keymap.Commands, "Commands"))
 	if m.onMediaList() {
 		actions = append(actions, h(keymap.SortAlbums, m.nextMediaSort()))
 	} else if m.canSwitchTrackColumn() {
@@ -130,5 +134,5 @@ func (m *model) actionHints() string {
 	default:
 		actions = append(actions, h(keymap.AddTray, "Collect in Tray"), h(keymap.Open, "Open/play"), h(keymap.Append, "Append"))
 	}
-	return joinHints(append(actions, h(keymap.Commands, "Commands"), h(keymap.Help, "Keys"))...)
+	return joinHints(append(actions, h(keymap.Help, "Keys"))...)
 }

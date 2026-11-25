@@ -248,7 +248,7 @@ func (m *model) confirmTrayReplacement() {
 	}
 	message := "Replace the live queue with the Tray?"
 	if plan.CurrentID >= 0 && plan.KeepAt < 0 {
-		message = "Replace queue? The current track will stop."
+		message = "Replace queue? Playback will stop."
 	}
 	m.confirmAction(message, music.Action{Operation: music.ReplaceQueue, Tracks: m.trayTracks(), Replacement: &plan})
 }

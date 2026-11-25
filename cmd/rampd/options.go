@@ -12,6 +12,7 @@ import (
 	"rampd/internal/config"
 	"rampd/internal/keymap"
 	"rampd/internal/mpd"
+	"rampd/internal/theme"
 )
 
 func parseOptions(args []string, env func(string) (string, bool)) (mpd.Client, app.Options, error) {
@@ -84,9 +85,13 @@ func parseOptions(args []string, env func(string) (string, bool)) (mpd.Client, a
 	if err != nil {
 		return client, options, err
 	}
+	styles, err := theme.FromConfig(cfg.Theme)
+	if err != nil {
+		return client, options, err
+	}
 	network, address := endpoint(host, port)
 	client = mpd.Client{Network: network, Address: address, Password: cfg.MPD.Password, Timeout: timeout}
-	options = app.Options{DreamCount: cfg.Dream.TrackCount, Artwork: cfg.UI.Artwork, Keys: bindings}
+	options = app.Options{DreamCount: cfg.Dream.TrackCount, Artwork: cfg.UI.Artwork, Keys: bindings, Styles: &styles}
 	return client, options, nil
 }
 

@@ -10,12 +10,11 @@ import (
 
 	"rampd/internal/keymap"
 	"rampd/internal/music"
-	"rampd/internal/theme"
 )
 
 func TestConnectionStatusAlignsWithMainPanel(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
-	for _, size := range []tea.WindowSizeMsg{{Width: 90, Height: 24}, {Width: 38, Height: 12}, {Width: 18, Height: 5}} {
+	for _, size := range []tea.WindowSizeMsg{{Width: 100, Height: 24}, {Width: 90, Height: 24}, {Width: 38, Height: 12}, {Width: 18, Height: 5}} {
 		m.Update(size)
 		for _, state := range []string{"connecting", "online", "offline"} {
 			m.connected = state == "online"
@@ -69,17 +68,17 @@ func TestNavigationHighlightsConfiguredKeys(t *testing.T) {
 	}
 }
 
-func TestDevelopmentPanelOutlines(t *testing.T) {
+func TestOnlyListAndPlaybackHaveBorders(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
 	for _, tc := range []struct {
 		name          string
 		width, height int
 		wantPanels    int
 	}{
-		{"wide", 90, 24, 4},
-		{"narrow", 38, 24, 3},
-		{"short", 90, 12, 3},
-		{"too short", 90, 10, 0},
+		{"wide", 100, 24, 2},
+		{"narrow", 38, 24, 2},
+		{"short", 90, 12, 2},
+		{"too short", 90, 8, 0},
 		{"too narrow", 15, 24, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -96,43 +95,63 @@ func TestDevelopmentPanelOutlines(t *testing.T) {
 				t.Fatalf("expected %d rows, got %d", tc.height, len(lines))
 			}
 			statusRow, _ := findStatusLine(lines, "MPD: connecting")
-			if statusRow < 0 || !strings.HasPrefix(lines[statusRow+1], "╭ Playback") {
+			left := strings.Repeat(" ", m.sidebarWidth())
+			if statusRow < 0 || !strings.HasPrefix(lines[statusRow+1], left+"╭ Playback") {
 				t.Fatal("status should sit just above Playback")
 			}
-			for i, line := range lines[:len(lines)-1] {
-				if i == statusRow || strings.TrimSpace(line) == "" {
-					continue
-				}
-				if width := ansi.StringWidth(line); width != tc.width {
-					t.Errorf("expected %d columns, got %d: %q", tc.width, width, line)
+			right := m.sidebarWidth() + m.bodyWidth()
+			for _, line := range lines[statusRow+1 : statusRow+4] {
+				if !strings.HasPrefix(line, left) || ansi.StringWidth(line) != right {
+					t.Errorf("Playback should align with the main panel: %q", line)
 				}
 			}
-			if hint := lines[len(lines)-1]; !strings.HasPrefix(hint, "  [/] Filter") {
-				t.Fatalf("key hints should be below the playback border: %q", hint)
+			if hint := lines[len(lines)-1]; !strings.HasPrefix(hint, left+"  [/] Filter") || ansi.StringWidth(hint) > right {
+				t.Fatalf("key hints should align with the playback text: %q", hint)
 			}
-			if tc.wantPanels == 4 {
-				if !strings.HasPrefix(view, "╭ Navigation") || !strings.Contains(lines[0], "╮  ╭ Songs") ||
-					!strings.Contains(lines[0], "╮  ╭ SELECTION") {
-					t.Fatal("navigation, content, and artwork should share the same top row")
+			if m.sidebarWidth() > 0 {
+				leftWidth := m.sidebarWidth()
+				if rightWidth := m.width - leftWidth - m.bodyWidth(); rightWidth != leftWidth {
+					t.Fatalf("side columns should center the main panel: left %d, right %d", leftWidth, rightWidth)
+				}
+				navTop, rightTop, _ := strings.Cut(lines[0], "╭ Songs")
+				_, artTop, _ := strings.Cut(rightTop, "╮")
+				if strings.TrimSpace(navTop) != "" || strings.TrimSpace(artTop) != "" {
+					t.Fatal("side panels should leave the first row empty")
+				}
+				if !strings.HasPrefix(lines[1], "  LIBRARY") || !strings.Contains(lines[1], "│    ▄") {
+					t.Fatal("navigation and cover should start on the same row")
 				}
 				for i, label := range []string{"LIBRARY", "▸ [1] Songs", "[2] Albums", "[3] Artists", "",
 					"SESSION", "[4] Tray", "[5] Queue", "", "MIXES", "[6] Playlists", "[7] Dream"} {
-					if !strings.Contains(strings.SplitN(lines[i+1], "│  │", 2)[0], label) {
+					nav, _, _ := strings.Cut(lines[i+1], "│")
+					if !strings.Contains(nav, label) {
 						t.Errorf("missing sidebar entry %q on row %d: %q", label, i+1, lines[i+1])
 					}
 				}
-				if strings.Contains(view, "rämpd player") {
-					t.Fatal("standalone title should not be rendered")
-				}
+			} else if !strings.HasPrefix(lines[1], "╭ Songs") {
+				t.Fatal("compact navigation should use one line above the list")
 			}
 		})
 	}
 
-	m.styles = theme.Synthwave()
+	m.styles.OutlinePanels = false
 	m.Update(tea.WindowSizeMsg{Width: 90, Height: 24})
 	view := ansi.Strip(m.View().Content)
-	if strings.Contains(view, "╭") || !strings.Contains(view, "SELECTION") {
-		t.Fatal("the normal synthwave theme should show artwork without outlines")
+	if strings.Contains(view, "╭") || !strings.Contains(view, "▀ ▀") {
+		t.Fatal("disabling panel outlines should keep the artwork visible")
+	}
+}
+
+func TestSidebarAllowsRoomForTheList(t *testing.T) {
+	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
+	for _, width := range []int{64, 90, 99, 120} {
+		m.Update(tea.WindowSizeMsg{Width: width, Height: 24})
+		if m.bodyWidth() < minListWidth {
+			t.Errorf("list is too narrow at %d columns", width)
+		}
+		if m.showArtworkPanel() != (width >= 2*sidePanelSpan+minListWidth) {
+			t.Errorf("wrong artwork visibility at %d columns", width)
+		}
 	}
 }
 
@@ -142,24 +161,25 @@ func TestSavePromptStaysBelowPlaybackFrame(t *testing.T) {
 	m.namePlaylist(music.Action{Operation: music.SaveQueue})
 	view := m.View()
 	cursor := view.Cursor
-	if cursor == nil || cursor.X != panelInset+len("Save as: ") || cursor.Y != 22 {
+	if cursor == nil || cursor.X != m.sidebarWidth()+panelInset+len("Save as: ") || cursor.Y != 22 {
 		t.Fatalf("wrong save cursor position: %+v", cursor)
 	}
 	lines := strings.Split(ansi.Strip(view.Content), "\n")
-	if !strings.HasPrefix(lines[cursor.Y-1], "╰") || !strings.HasPrefix(lines[cursor.Y], "  Save as: ") {
+	left := strings.Repeat(" ", m.sidebarWidth())
+	if !strings.HasPrefix(lines[cursor.Y-1], left+"╰") || !strings.HasPrefix(lines[cursor.Y], left+"  Save as: ") {
 		t.Fatal("save prompt should be outside the playback frame")
 	}
 }
 
 func TestPromptCursorStaysInsidePanel(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
-	m.Update(tea.WindowSizeMsg{Width: 90, Height: 24})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 	m.Update(keyRune('/'))
 	m.Update(keyRune('x'))
 
 	for _, tc := range []struct{ width, height, left, row int }{
-		{90, 24, navWidth + panelGap, 1},
-		{38, 13, 0, 4},
+		{100, 24, sidePanelSpan, 1},
+		{38, 13, 0, 2},
 	} {
 		m.Update(tea.WindowSizeMsg{Width: tc.width, Height: tc.height})
 		view := m.View()
@@ -167,8 +187,9 @@ func TestPromptCursorStaysInsidePanel(t *testing.T) {
 		if cursor == nil || cursor.X != tc.left+panelInset+filterInset+3 || cursor.Y != tc.row {
 			t.Fatalf("wrong search cursor at %dx%d: %+v", tc.width, tc.height, cursor)
 		}
-		line := strings.Split(ansi.Strip(view.Content), "\n")[cursor.Y]
-		if !strings.HasPrefix(string([]rune(line)[tc.left:]), "│ [ / x") || !strings.HasSuffix(line, "│") {
+		line := strings.Split(view.Content, "\n")[cursor.Y]
+		main := ansi.Strip(ansi.Cut(line, tc.left, tc.left+m.bodyWidth()))
+		if !strings.HasPrefix(main, "│ [ / x") || !strings.HasSuffix(main, "│") {
 			t.Fatalf("cursor is not on the framed search line: %q", line)
 		}
 	}

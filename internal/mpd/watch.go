@@ -66,6 +66,7 @@ func (c Client) Watch(ctx context.Context, notify func(music.Changes)) error {
 			if err != nil {
 				return err
 			}
+			// The next idle wait is not a request with a time limit.
 			if err := w.SetDeadline(time.Time{}); err != nil {
 				return err
 			}

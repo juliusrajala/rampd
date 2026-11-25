@@ -21,11 +21,12 @@ func (m *model) playbackLine() string {
 		mode = "Paused"
 	}
 	mode = m.styles.AccentText.Render(mode)
-	var artist, suffix string
+	width := m.innerWidth(m.bodyWidth())
+	var song, artist, times string
 	if status.State == "play" || status.State == "pause" {
 		for _, entry := range m.queue {
 			if entry.ID == status.SongID {
-				mode += " · " + m.styles.SongName.Render(clean(trackTitle(entry.Track)))
+				song = clean(trackTitle(entry.Track))
 				if name := trackArtist(entry.Track); name != "" {
 					artist = " — " + m.styles.ArtistName.Render(clean(name))
 				}
@@ -33,19 +34,24 @@ func (m *model) playbackLine() string {
 			}
 		}
 		if status.Duration > 0 {
-			suffix += " · " + clock(m.playbackElapsed()) + " / " + clock(status.Duration)
+			times = " · " + m.styles.ProgressFilled.Render(clock(m.playbackElapsed())+" / "+clock(status.Duration))
 		}
 	}
-	if status.Random {
-		suffix += " · Random"
+	// Keep the timer visible when the track name does not fit beside it.
+	if titleWidth := width - ansi.StringWidth(mode+times) - 3; song != "" && titleWidth > 0 {
+		mode += " · " + m.styles.SongName.Render(ansi.Truncate(song, titleWidth, "…"))
 	}
-	if status.Repeat {
-		suffix += " · Repeat"
-	}
-	if ansi.StringWidth(mode+artist+suffix) <= m.innerWidth(m.width) {
+	if ansi.StringWidth(mode+artist+times) <= width {
 		mode += artist
 	}
-	return mode + suffix
+	line := mode + times
+	if status.Random && ansi.StringWidth(line+" · Random") <= width {
+		line += " · Random"
+	}
+	if status.Repeat && ansi.StringWidth(line+" · Repeat") <= width {
+		line += " · Repeat"
+	}
+	return line
 }
 
 func durationLabel(d time.Duration) string {
@@ -65,7 +71,7 @@ func clock(d time.Duration) string {
 
 func (m *model) playbackWithProgress() string {
 	text := m.playbackLine()
-	width := m.innerWidth(m.width)
+	width := m.innerWidth(m.bodyWidth())
 	elapsed, total := m.playbackElapsed(), m.status.Duration
 	hasProgress := m.connected && total > 0 && (m.status.State == "play" || m.status.State == "pause")
 	// Do not hide playback text to fit an inline bar.

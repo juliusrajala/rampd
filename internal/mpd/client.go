@@ -84,14 +84,11 @@ func (c Client) Apply(ctx context.Context, a music.Action) error {
 			seconds = "+" + seconds
 		}
 		return w.run("seekcur", seconds)
-	case music.Append, music.AppendAndPlay, music.ReplaceAndPlay:
+	case music.ReplaceAndPlay:
+		return replaceAndPlay(w, a.Tracks)
+	case music.Append, music.AppendAndPlay:
 		if len(a.Tracks) == 0 {
 			return nil
-		}
-		if a.Operation == music.ReplaceAndPlay {
-			if err := w.run("clear"); err != nil {
-				return err
-			}
 		}
 		if a.Operation != music.Append {
 			fields, err := w.query("addid", a.Tracks[0].URI)

@@ -263,7 +263,8 @@ func TestTrayFooterFlipsActionScopes(t *testing.T) {
 		t.Fatalf("notice should be inset above Playback: %q", view)
 	}
 	edit := lines[len(lines)-1]
-	if !strings.HasPrefix(edit, "  [ctrl+t] Mode  1 marked · 1 hidden") || !strings.Contains(edit, "[x] Remove") ||
+	left := strings.Repeat(" ", m.sidebarWidth()+m.textInset())
+	if !strings.HasPrefix(edit, left+"[ctrl+t] Mode  1 marked · 1 hidden") ||
 		strings.Contains(view, "Whole Tray") {
 		t.Fatalf("wrong edit hints: %q", edit)
 	}
@@ -271,8 +272,8 @@ func TestTrayFooterFlipsActionScopes(t *testing.T) {
 	view = ansi.Strip(m.View().Content)
 	lines = strings.Split(view, "\n")
 	whole := lines[len(lines)-1]
-	if !strings.HasPrefix(whole, "  [ctrl+t] Mode  Whole Tray") || !strings.Contains(whole, "[P] Replace") ||
-		strings.Contains(view, "[x] Remove") || !strings.HasPrefix(lines[len(lines)-2], "╰") {
+	if !strings.HasPrefix(whole, left+"[ctrl+t] Mode  Whole Tray") ||
+		strings.Contains(view, "[x] Remove") || !strings.HasPrefix(strings.TrimSpace(lines[len(lines)-2]), "╰") {
 		t.Fatalf("expected one row of whole-Tray hints: %q", whole)
 	}
 	if len(m.trayMarks) != 1 || m.page().filter != "First" || !slices.Equal(m.trayTracks(), fixtureTracks) {

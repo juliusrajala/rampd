@@ -18,20 +18,21 @@ const (
 )
 
 type artworkMsg struct {
-	uri   string
-	lines []string
+	uri      string
+	lines    []string
+	revision uint64
 }
 
 func (m *model) showArtworkPanel() bool {
 	needed := artRowCount + 2 // Title and at least one metadata row.
 	if !m.framed() {
-		needed++ // The unframed panel also needs a heading.
+		needed++ // The unframed panel uses one line for top padding.
 	}
 	width := m.width - m.sidebarWidth()
 	minWidth := 76
 	if m.sidebarWidth() > 0 {
-		// Leave at least 39 columns for the main frame beside the cover.
-		minWidth = 39 + artPanelWidth + 2*panelInset + panelGap
+		// Keep enough room for the main frame between the side panels.
+		minWidth = minListWidth + sidePanelSpan
 	}
 	return m.artworkEnabled && width >= minWidth && m.bodyHeight() >= needed && !m.showHelp && m.prompt != palettePrompt
 }
@@ -63,10 +64,10 @@ func (m *model) requestArtwork() tea.Cmd {
 	if uri == "" || m.artIndex(uri) >= 0 {
 		return nil
 	}
-	ctx, server := m.ctx, m.server
+	ctx, server, revision := m.ctx, m.server, m.artworkRevision
 	m.artworkLoading = uri
 	return func() tea.Msg {
-		msg := artworkMsg{uri: uri}
+		msg := artworkMsg{uri: uri, revision: revision}
 		if data, err := server.Artwork(ctx, uri); err == nil && len(data) > 0 {
 			if img, err := artwork.Decode(data); err == nil {
 				msg.lines = artwork.SquareCover(img, artRowCount)
@@ -76,8 +77,18 @@ func (m *model) requestArtwork() tea.Cmd {
 	}
 }
 
+func (m *model) invalidateArtwork() {
+	m.artworkCache = nil
+	m.artworkRevision++
+	// Keep the in-flight slot until its result arrives. Update can then
+	// fetch the current selection without starting a second request in parallel.
+}
+
 func (m *model) storeArtwork(msg artworkMsg) {
 	m.artworkLoading = ""
+	if msg.revision != m.artworkRevision {
+		return
+	}
 	m.artworkCache = append(m.artworkCache, msg)
 	if len(m.artworkCache) > artCacheLimit {
 		m.artworkCache = slices.Delete(m.artworkCache, 0, 1)
@@ -98,6 +109,10 @@ func (m *model) artworkRows() []string {
 					value = m.styles.ArtistName
 				case "Album":
 					value = m.styles.AlbumName
+				case "Length":
+					if field.value != "—" {
+						value = m.styles.ProgressFilled
+					}
 				}
 				details = append(details, key+"  "+value.Render(clean(field.value)))
 			}
@@ -106,17 +121,13 @@ func (m *model) artworkRows() []string {
 		details = append(details, m.styles.Muted.Render("Nothing selected"))
 	}
 
-	// On short panels, leave room for the title and the first three fields.
-	room := m.bodyHeight() - artRowCount - min(4, len(details))
-	if !m.framed() {
-		room-- // The unframed panel has a separate heading line.
+	// Leave room for the title and the first three fields before adding a gap.
+	height := m.bodyHeight() - 1 // The side panel adds one line of top padding.
+	if m.framed() {
+		height += 2 // Use the height of the main frame, not just its contents.
 	}
-	var panel []string
-	if room > 0 {
-		panel = append(panel, "")
-	}
-	panel = append(panel, m.selectionCover(selected.artworkURI())...)
-	if room > 1 {
+	panel := m.selectionCover(selected.artworkURI())
+	if height > artRowCount+min(4, len(details)) {
 		panel = append(panel, "")
 	}
 	return append(panel, details...)
@@ -211,16 +222,11 @@ func (m *model) joinArtwork(rows []string) {
 	if !m.showArtworkPanel() {
 		return
 	}
-	panel := []string{m.styles.Heading.Render("SELECTION")}
-	panel = append(panel, m.artworkRows()...)
+	panel := m.openPanel(artPanelWidth, len(rows), m.artworkRows())
 	leftWidth := m.bodyWidth()
 	for i, line := range rows {
 		left := ansi.Truncate(line, leftWidth, "…")
-		right := ""
-		if i < len(panel) {
-			right = ansi.Truncate(panel[i], artPanelWidth, "…")
-		}
-		rows[i] = left + strings.Repeat(" ", max(0, leftWidth-ansi.StringWidth(left))) + m.styles.Divider.Render(" │ ") + right
+		rows[i] = left + strings.Repeat(" ", max(0, leftWidth-ansi.StringWidth(left))) + "   " + panel[i]
 	}
 }
 

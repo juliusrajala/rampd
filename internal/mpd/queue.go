@@ -2,11 +2,62 @@ package mpd
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strconv"
 
 	"rampd/internal/music"
 )
+
+func replaceAndPlay(w *wire, tracks []music.Track) error {
+	if len(tracks) == 0 {
+		return nil
+	}
+	previous, err := readQueue(w)
+	if err != nil {
+		return err
+	}
+
+	adds := make([]command, 0, len(tracks))
+	for _, track := range tracks {
+		adds = append(adds, command{"addid", []string{track.URI}})
+	}
+	fields, err := w.queryList(adds)
+	var staged []string
+	for _, f := range fields {
+		if f.key == "Id" {
+			staged = append(staged, f.value)
+		}
+	}
+	if err != nil {
+		var ack ackError
+		if errors.As(err, &ack) {
+			// An ACK ends the response. The connection is still usable and
+			// we can undo the earlier adds without touching the live entries.
+			var rollback []command
+			for _, id := range staged {
+				rollback = append(rollback, command{"deleteid", []string{id}})
+			}
+			if rollbackErr := w.runList(rollback); rollbackErr != nil {
+				return errors.Join(err, fmt.Errorf("remove staged Dream tracks: %w", rollbackErr))
+			}
+		}
+		return err
+	}
+	if len(staged) != len(tracks) {
+		return errors.New("MPD did not return all staged track IDs; original queue entries were not removed")
+	}
+
+	commands := make([]command, 0, len(previous)+2)
+	if len(previous) > 0 {
+		commands = append(commands, command{"stop", nil})
+	}
+	for _, entry := range previous {
+		commands = append(commands, command{"deleteid", []string{strconv.Itoa(entry.ID)}})
+	}
+	commands = append(commands, command{"playid", []string{staged[0]}})
+	return w.runList(commands)
+}
 
 func replaceQueue(w *wire, tracks []music.Track, plan *music.QueueReplacement) error {
 	if plan == nil || len(tracks) == 0 || plan.KeepAt < -1 || plan.KeepAt >= len(tracks) ||

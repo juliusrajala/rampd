@@ -78,7 +78,13 @@ func (m *model) View() tea.View {
 	case m.prompt == playlistNamePrompt:
 		footer = append(footer, m.input.View(), joinHints(m.shortcut("Enter", "Confirm"), m.shortcut("Esc", "Cancel")))
 	case m.confirmation != nil:
-		footer = append(footer, joinHints(m.styles.AccentText.Render(m.confirmation.message), m.shortcut("y", "Confirm"), m.styles.Muted.Render("Any other key cancels")), "")
+		question := m.styles.AccentText.Render(m.confirmation.message)
+		hints := joinHints(m.shortcut("y", "Confirm"), m.shortcut("Esc", "Cancel"))
+		if footerHeight > 2 {
+			footer = append(footer, question, hints)
+		} else {
+			footer = append(footer, joinHints(hints, question))
+		}
 	case m.tab == trayTab && m.prompt == noPrompt && !m.showHelp:
 		footer = append(footer, m.trayFooter())
 		notice = m.notice
@@ -106,7 +112,7 @@ func (m *model) View() tea.View {
 	switch {
 	case m.framed():
 		if m.sidebarWidth() == 0 {
-			lines = m.frame("Navigation", m.width, []string{tabLine})
+			lines = []string{m.insetLine(tabLine, 0, m.width)}
 		}
 		inputRow = len(lines) + 1 // First line inside the content panel.
 		lines = append(lines, m.framedBody(title, rows, tabs)...)
@@ -124,15 +130,17 @@ func (m *model) View() tea.View {
 		footerHeight--
 	}
 	if m.framed() {
-		lines = append(lines, m.frame("Playback", m.width, []string{playback})...)
+		for _, line := range m.frame("Playback", m.bodyWidth(), []string{playback}) {
+			lines = append(lines, strings.Repeat(" ", m.sidebarWidth())+line)
+		}
 	} else {
-		lines = append(lines, playback)
+		lines = append(lines, ansi.Truncate(playback, m.bodyWidth(), "…"))
 	}
 	if !m.inlineInput() {
 		inputRow = len(lines)
 	}
 	for _, line := range fitRows(footer, footerHeight) {
-		lines = append(lines, m.insetFooter(line))
+		lines = append(lines, m.insetLine(line, m.sidebarWidth(), m.bodyWidth()))
 	}
 	if len(lines) > m.height {
 		if (m.prompt != noPrompt || m.confirmation != nil) && m.height > 0 && inputRow >= m.height {
@@ -155,7 +163,7 @@ func (m *model) View() tea.View {
 					cursor.X += panelInset + m.sidebarWidth()
 				}
 			} else {
-				cursor.X = m.textInset() + min(cursor.X, m.innerWidth(m.width)-1)
+				cursor.X = m.sidebarWidth() + m.textInset() + min(cursor.X, m.innerWidth(m.bodyWidth())-1)
 			}
 			cursor.Y = inputRow
 			view.Cursor = cursor
@@ -164,8 +172,8 @@ func (m *model) View() tea.View {
 	return view
 }
 
-func (m *model) insetFooter(line string) string {
-	return strings.Repeat(" ", m.textInset()) + ansi.Truncate(line, m.innerWidth(m.width), "…")
+func (m *model) insetLine(line string, start, width int) string {
+	return strings.Repeat(" ", start+m.textInset()) + ansi.Truncate(line, m.innerWidth(width), "…")
 }
 
 func (m *model) statusLine(notice string) string {
@@ -241,9 +249,17 @@ func (m *model) artistRow(title string, row row, width int, selected bool) strin
 			counts = fmt.Sprintf("Alb: %d - Songs: %d", albums, songs)
 		}
 		counts = ansi.Truncate(counts, countWidth, "…")
-		return m.appendRowColumn(title, counts+strings.Repeat(" ", countWidth-ansi.StringWidth(counts)), width, selected)
+		counts += strings.Repeat(" ", countWidth-ansi.StringWidth(counts))
+		if !selected {
+			counts = m.styles.Muted.Render(counts)
+		}
+		return appendRowColumn(title, counts, width)
 	case width >= 21:
-		return m.appendRowColumn(title, fmt.Sprintf("Songs: %d", len(row.tracks)), width, selected)
+		counts := fmt.Sprintf("Songs: %d", len(row.tracks))
+		if !selected {
+			counts = m.styles.Muted.Render(counts)
+		}
+		return appendRowColumn(title, counts, width)
 	default:
 		return ansi.Truncate(title, width, "…")
 	}
@@ -276,17 +292,17 @@ func (m *model) mediaRow(title string, row row, width int, selected bool) string
 	if mainWidth == width {
 		return ansi.Truncate(title, width, "…")
 	}
-	length := durationLabel(row.duration)
-	return m.appendRowColumn(ansi.Truncate(title, mainWidth, "…"), fmt.Sprintf("%*s", timeWidth, length), width, selected)
+	length := fmt.Sprintf("%*s", timeWidth, durationLabel(row.duration))
+	if !selected && row.duration > 0 {
+		length = m.styles.ProgressFilled.Render(length)
+	}
+	return appendRowColumn(title, length, width)
 }
 
-func (m *model) appendRowColumn(left, right string, width int, selected bool) string {
+func appendRowColumn(left, right string, width int) string {
 	room := width - ansi.StringWidth(right)
 	left = ansi.Truncate(left, room-2, "…")
 	gap := strings.Repeat(" ", room-ansi.StringWidth(left))
-	if !selected {
-		right = m.styles.Muted.Render(right)
-	}
 	return left + gap + right
 }
 

@@ -7,20 +7,22 @@ import (
 )
 
 const (
-	panelInset = 2 // One border cell and one padding cell on each side.
-	panelGap   = 2
-	navWidth   = 19
-	navRows    = len(tabNames) + 5 // Three labels and two gaps.
+	panelInset     = 2 // One border cell and one padding cell on each side.
+	panelGap       = 2
+	sidePanelWidth = artPanelWidth + 2*panelInset
+	sidePanelSpan  = sidePanelWidth + panelGap
+	minListWidth   = 39
+	navRows        = len(tabNames) + 5 // Three labels and two gaps.
 
 	// The content frame, playback frame, and borderless footer.
 	bodyChromeHeight = 2 + 3 + 2
-	// Compact navigation adds a frame with one line.
-	frameChromeHeight = bodyChromeHeight + 3
+	// Compact navigation adds one line above the content frame.
+	frameChromeHeight = bodyChromeHeight + 1
 )
 
 func (m *model) footerHeight() int {
-	if m.prompt == playlistNamePrompt && m.height >= 6 {
-		return 3 // Keep both the name input and its hints below the status row.
+	if (m.prompt == playlistNamePrompt || m.confirmation != nil) && m.height >= 6 {
+		return 3 // Keep prompt text and its hints below the status row.
 	}
 	return 2
 }
@@ -34,8 +36,8 @@ func (m *model) framed() bool {
 }
 
 func (m *model) sidebarWidth() int {
-	if m.framed() && m.width >= 64 && m.height-bodyChromeHeight-(m.footerHeight()-2) >= navRows {
-		return navWidth + panelGap
+	if m.framed() && m.width >= minListWidth+sidePanelSpan && m.height-bodyChromeHeight-(m.footerHeight()-2) >= navRows {
+		return sidePanelSpan
 	}
 	return 0
 }
@@ -81,7 +83,7 @@ func (m *model) filterPadding() int {
 }
 
 func (m *model) resizeInput() {
-	width := m.innerWidth(m.width)
+	width := m.innerWidth(m.bodyWidth())
 	if m.inlineInput() {
 		width = m.innerWidth(m.bodyWidth()) - 2*m.filterPadding()
 	}
@@ -92,7 +94,7 @@ func (m *model) bodyWidth() int {
 	width := m.width - m.sidebarWidth()
 	if m.showArtworkPanel() {
 		if m.framed() {
-			return width - (artPanelWidth + 2*panelInset) - panelGap
+			return width - sidePanelSpan
 		}
 		return width - artPanelWidth - 3
 	}
@@ -116,14 +118,26 @@ func (m *model) frame(title string, width int, lines []string) []string {
 func (m *model) framedBody(title string, rows, tabs []string) []string {
 	body := m.frame(title, m.bodyWidth(), rows)
 	if m.sidebarWidth() > 0 {
-		nav := m.frame("Navigation", navWidth, fitRows(m.navGroups(tabs), len(rows)))
+		nav := m.openPanel(sidePanelWidth, len(body), m.navGroups(tabs))
 		body = joinPanels(nav, body)
 	}
 	if m.showArtworkPanel() {
-		art := m.frame("SELECTION", artPanelWidth+2*panelInset, fitRows(m.artworkRows(), len(rows)))
+		art := m.openPanel(sidePanelWidth, len(body), m.artworkRows())
 		body = joinPanels(body, art)
 	}
 	return body
+}
+
+// Both side panels start one row below the top of the main panel.
+func (m *model) openPanel(width, height int, rows []string) []string {
+	lines := fitRows(append([]string{""}, rows...), height)
+	inset := m.textInset()
+	pad := strings.Repeat(" ", inset)
+	for i, line := range lines {
+		line = ansi.Truncate(line, m.innerWidth(width), "…")
+		lines[i] = pad + line + strings.Repeat(" ", width-inset-ansi.StringWidth(line))
+	}
+	return lines
 }
 
 func (m *model) navGroups(tabs []string) []string {

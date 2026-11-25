@@ -16,13 +16,15 @@ type watchMsg struct {
 type watchRetry struct{}
 type progressTick time.Time
 
+// The watch command owns the MPD connection. It hands events to Update
+// through the channel and never reads or writes the model from its goroutine.
 func (m *model) runWatch() tea.Cmd {
 	ctx, server, events := m.ctx, m.server, m.events
 	return func() tea.Msg {
 		emit := func(msg watchMsg) {
 			select {
 			case events <- msg:
-			case <-ctx.Done():
+			case <-ctx.Done(): // Quit may stop the receiver before this send.
 			}
 		}
 		// A failed or unsupported idle request uses the same polling fallback.
@@ -45,6 +47,8 @@ func (m *model) awaitWatch() tea.Cmd {
 }
 
 func (m *model) handleWatch(msg watchMsg) tea.Cmd {
+	// Each received event replaces the one-shot receiver. Only Update
+	// schedules a new producer, after the old producer reports that it stopped.
 	next := m.awaitWatch()
 	if msg.stopped {
 		m.watching = false

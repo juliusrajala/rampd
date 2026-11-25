@@ -1,27 +1,73 @@
 # rämpd player
 
-A keyboard-first terminal music player for [Music Player Daemon](https://www.musicpd.org/). MPD plays your music and owns the queue. rämpd player does not start MPD or modify music files.
+A keyboard-first terminal client for [Music Player Daemon (MPD)](https://www.musicpd.org/). Browse your library, arrange tracks in a saved **Tray**, and use **Dream** to build a listening preview from music you already have. MPD handles playback and owns the live queue. rämpd does not start MPD or modify music files.
 
-## Run
+I started rämpd after recovering much of my old music library. I liked how programmable MPD was, but I had trouble finding a client that felt right. I wanted a terminal player that made it as enjoyable to put a mix together as it was to play it.
 
-Start and index your library with MPD before opening the player. Use the Go version in `go.mod` or later.
+## Quick start
+
+Start MPD and let it index your music. From this repository, use the Go version in [`go.mod`](go.mod) or later:
 
 ```sh
 go run ./cmd/rampd
 ```
 
-The default address is `127.0.0.1:6600`. To choose another server or a Unix socket:
+To install the `rampd` command locally, run `go install ./cmd/rampd`. Put the Go binary directory on your `PATH` to run `rampd` from anywhere. Otherwise, use the full path to the installed binary.
+
+By default, rämpd connects to `127.0.0.1:6600`. To use another MPD server or a Unix socket:
 
 ```sh
 go run ./cmd/rampd -host jukebox.local -port 6600
 go run ./cmd/rampd -host /path/to/mpd/socket
 ```
 
-You can also set `MPD_HOST` and `MPD_PORT`. Use `MPD_PASSWORD` if needed. The player also accepts the standard `password@host` form of `MPD_HOST`. MPD's TCP protocol is not encrypted. Use a trusted network or an SSH tunnel for a remote server.
+MPD does not encrypt TCP connections. Use a trusted network or an SSH tunnel for a remote server.
+
+## Browse and play
+
+The player opens in **Songs**. Press `1`–`7` to switch to Songs, Albums, Artists, Tray, Queue, Playlists, or Dream. Wide terminals center the main list between equal-width panels for navigation and artwork. The side panels have no borders. Narrow terminals keep navigation above the list. The main list and Playback have borders when space allows.
+
+| Key | Action |
+| --- | --- |
+| `Tab` / `Shift+Tab` | Switch views |
+| `j` / `k` or `↓` / `↑` | Move the selection |
+| `h` / `l` or `←` / `→` | Go back or open the selection |
+| `Enter` | Open a group or play the selected track |
+| `Space` | Append a library selection to the live queue |
+| `/` | Filter the current list as you type. `Enter` keeps the filter and `Esc` clears it |
+| `o` | Sort Songs or Albums by title or artist. In Tray Edit tracks mode, Queue, Dream, or an open playlist, switch the artist and album column without changing track order |
+| `p`, `n`, `b` | Play or pause, skip forward, or skip back |
+| `[` / `]` | Seek backward or forward five seconds |
+| `r` / `R` | Toggle random playback or repeat |
+| `:` | Open the command palette. Type to filter, use `↑` / `↓` to select, and press `Enter` to run the command |
+| `?` / `q` | Show key help or quit |
+
+Playing a track from the library or a stored playlist appends it before playback. It does not replace the queue. When MPD notifications are available, the player picks up changes from other clients automatically. Otherwise it polls for playback and queue changes. Use `Ctrl+R` to refresh the library or playlists manually.
+
+### Tray: plan a mix without changing playback
+
+Press `t` while browsing to collect the highlighted artist, album, or track. This skips tracks already in the Tray. Press `4` to open the Tray. Use `Ctrl+T` to switch modes. Only the active mode’s Tray actions work. Navigation, filtering, and playback controls work in both modes.
+
+- **Edit tracks:** Use `J` / `K` to move tracks down or up and `x` to remove them. Press `v` to mark tracks for a group edit. With no marks, edits apply to the highlighted track. Marks survive filtering, and edits include hidden marked tracks. Press `Esc` to clear a filter, then press it again to clear marks.
+- **Whole Tray:** Press `C` to copy the live queue, `Space` to append the Tray to it, `w` to save a playlist, or `D` to preview a Dream. Press `P` to replace the queue after confirmation. If the current track is retained, playback keeps its position. Otherwise it stops without starting another track. Use the palette (`:`) for **Shuffle Tray**. These actions use the full Tray, not just visible or marked tracks.
+
+You can also copy the live queue with `C` from **Queue**. Copying preserves order and repeats and asks before replacing a nonempty Tray. The Tray saves automatically to `$XDG_STATE_HOME/rampd/tray.json`, or `~/.local/state/rampd/tray.json` by default. Marks do not persist. Restoring the Tray does not change playback.
+
+### Queue and playlists
+
+In **Queue**, `J` / `K` moves a track, `x` removes it, `s` shuffles the queue, and `X` clears it after confirmation. Press `w` to save the queue as a new MPD playlist.
+
+In the **Playlists** list, `c` creates a playlist, `e` renames it, and `X` asks before deleting it. Open a playlist to reorder or remove tracks, or use `a` to append the full playlist to the queue. Press `A` on an eligible selection to add it to an existing playlist by name.
+
+### Dream: preview a listening session
+
+Press `7`, then `g` for a preview from your whole library. Or press `D` in **Whole Tray** mode for other tracks that match the artist, album artist, or genre tags in the Tray. Dream runs locally, skips duplicate tracks, and avoids consecutive tracks by the same artist when possible. The default target is 25 tracks (`-dream-count` changes it).
+
+Generating a preview does not change the Tray or queue. From Dream, `Space` appends the preview, `Enter` appends and plays it, `P` replaces the queue and starts playback after confirmation, and `w` saves it as a new playlist.
 
 ## Configuration
 
-The optional settings file is `$XDG_CONFIG_HOME/rampd/config.toml`, or `~/.config/rampd/config.toml` if `XDG_CONFIG_HOME` is unset. Use `-config PATH` to read a different file. Command-line flags override environment variables, which override the file.
+The optional config file is `$XDG_CONFIG_HOME/rampd/config.toml`, or `~/.config/rampd/config.toml` by default. Use `-config PATH` for a different file. Command-line flags take precedence over `MPD_HOST` and `MPD_PORT`, which take precedence over the file. For authentication, prefer `MPD_PASSWORD`. The player also accepts `password@host` in `MPD_HOST` or `mpd.password` in a private config file.
 
 ```toml
 [mpd]
@@ -36,81 +82,28 @@ artwork = true
 track_count = 25
 
 [keybindings]
-play_pause = ["ctrl+p"]
-filter = ["/"]
+play_pause = ["p", "ctrl+p"]
+
+[theme]
+progress_played = "#77F5E5"
+progress_unplayed = "#3A3743"
 ```
 
-Key names are case-sensitive. Use names such as `space`, `enter`, `up`, or `ctrl+r` for special keys. The first key in a list appears in hints. Use an empty list to unbind an action. See [default actions](internal/keymap/keymap.go) for their configuration names. Text prompts keep their standard Enter and Esc controls. Ctrl+C always quits.
+Set `artwork = false` or pass `-artwork=false` to hide the Selection panel. Key names are case-sensitive. Use names such as `space`, `enter`, or `ctrl+r` for special keys. The first key in each list appears in hints. Use `[]` to unbind an action. See [default keybindings](internal/keymap/keymap.go) for the action names. Text prompts keep their standard `Enter` and `Esc` controls. `Ctrl+C` always quits.
 
-Use `MPD_PASSWORD` or set `mpd.password` in a private config file if your server requires a password.
+Theme overrides use `#RRGGBB` colors. The `progress_played` color also applies to track lengths and playback times. Omitted colors keep their Synthwave defaults. See the [full palette](docs/theme.md) and restart the player after editing it.
 
-## Keys
-
-| Key | Action |
-| --- | --- |
-| `1`–`7`, `Tab` | Switch between Songs, Albums, Artists, Tray, Queue, Playlists, and Dream |
-| `j` / `k`, arrows | Move the selection |
-| `h` / `l` | Go back or open the selection |
-| `Enter` | Open an artist or album, or play a track |
-| `Space` | Append the selected artist, album, or track |
-| `/` | Filter the current list as you type. Press `Enter` to return to the list or `Esc` to clear the filter |
-| `Ctrl+R` | Reload the indexed library or current playlist view |
-| `p`, `n`, `b` | Play/pause, next, and previous |
-| `[` / `]` | Seek backward or forward five seconds |
-| `r` / `R` | Toggle MPD random or repeat |
-| `x`, `J` / `K` | Remove the queue entry or move it down/up |
-| `s`, `X` | Shuffle or clear the queue. Clear asks for confirmation |
-| `o` | Sort Albums or Songs by title or artist. In Queue, Tray, Dream, or an open playlist, switch the artist and album column without reordering |
-| `:` | Open the command palette. Type to filter, use ↑/↓ to select, then press Enter |
-| `?`, `q` | Show key help or quit |
-| `w` | Save the current queue or Dream preview as a new playlist |
-| `a` | Append all tracks from an open stored playlist to the active queue |
-| `A` | Add the selection to an existing stored playlist by name |
-| `c`, `e`, `X` | Create, rename, or delete a playlist from the Playlists list |
-| `J` / `K`, `x` | Move or remove a track inside an open playlist |
-
-Song rows show track lengths, and album rows show total lengths when MPD knows every track length. Artists show album and song counts. Narrow layouts may hide some columns.
-
-The filter changes only what you see. Queue and Dream actions that apply to the whole list still use the full list. Move commands use positions in the full queue or stored playlist.
-
-### Tray
-
-Press `t` while browsing to collect the selected song, album, or artist. This skips songs already in the Tray. The Tray saves automatically to `$XDG_STATE_HOME/rampd/tray.json`, or `~/.local/state/rampd/tray.json` by default. It keeps track order and repeats across restarts. Marks do not persist. Editing or restoring it does not change playback. If a save fails, the player reports the error and keeps the edits in memory. If the saved file cannot be read, the player reports the error and leaves it untouched. If you previously bound `t` to another action, change that binding or assign a different key to `add_to_tray`.
-
-- Press `4` to open the Tray. Press `Ctrl+T` to switch between **Edit tracks** and **Whole Tray**. Only the active mode's Tray actions work. Navigation, filtering, and playback controls work in both modes. Press `:` for commands in the active mode. Use `J` / `K` to move the highlighted track and `x` to remove it. Press `v` on each track you want to mark, then use the same keys to move or remove the marked tracks together. Marks survive filtering, and edits include hidden marked tracks. Press `Esc` to clear the filter first, then again to clear the marks.
-- Press `C` in Queue or in the Tray's Whole Tray mode to copy the live queue into the Tray. This keeps duplicate entries and asks before replacing a nonempty Tray.
-- Press `Space` in the Tray to append the full Tray to Queue, or press `w` to save it as a playlist.
-- Press `P` in the Tray to replace the live queue after confirmation. If the current queue entry stays in the Tray, it keeps its playback position. Otherwise the player stops it and does not start another track. The player rejects a replacement if the queue or current track changes before it checks the confirmed edit.
-- In Whole Tray mode, open the command palette with `:` and choose **Shuffle Tray** to shuffle the full Tray, including tracks hidden by the filter. This does not shuffle the live queue.
-- Press `D` in the Tray to preview a Dream based on related artists or genres. The preview leaves the Tray and Queue unchanged.
-
-### Dream
-
-Press `7`, then `g` to generate a preview. Press `g` again to generate another sequence. Previewing makes no changes to MPD. Use `-dream-count` to set the target length (default: 25).
-
-- Press `Enter` to append and play the sequence.
-- Press `Space` to append it without starting playback.
-- Press `P` to replace the queue and start playback. This asks for confirmation.
-- Press `w` to save the preview as a native MPD playlist without changing the active queue. Open it with `6`.
-
-Playing a library or stored playlist track appends it and starts playback. It does not replace the queue. Playback, queue, library, and stored playlist changes from other MPD clients appear automatically when the server supports MPD notifications. If notifications are unavailable, the player polls for playback and queue changes. Press `Ctrl+R` to refresh the library or playlists manually.
-
-Wide terminals put navigation on the left and show details and square album covers for the highlighted item on the right when there is room. The Selection panel puts the cover above the title and its metadata. The Songs list keeps album names out of the rows but still accepts them in the filter. A pixel rämpd logo takes the place of missing covers. Narrow terminals keep the navigation above the list. The playback panel shows the track MPD is playing. Use `-artwork=false` to hide the selection panel.
-
-## Checks
+## Development checks
 
 ```sh
 go test ./...
 go vet ./...
-go test -race ./...
 ```
 
-On Linux with `mpd` and `ffmpeg` installed, run the integration test:
+On Linux, install `mpd` and `ffmpeg` to run the tests with a disposable MPD server:
 
 ```sh
-RAMPD_MPD_INTEGRATION=1 go test -count=1 ./internal/mpd
+RAMPD_MPD_INTEGRATION=1 go test -race -count=1 ./...
 ```
 
-The test creates a temporary library and uses a private Unix socket and a null audio output. It does not use your normal MPD server.
-
-For a keyboard smoke test, install `tmux`, `python3`, `mpd`, and `ffmpeg`, then run `bash scripts/smoke.sh`. See the [release checklist](docs/release-checklist.md) for build and packaging checks.
+For a keyboard smoke test, also install `tmux` and `python3`, then run `bash scripts/smoke.sh`. These tests use fixture music and a private socket. They do not use your normal MPD server. See the [release checklist](docs/release-checklist.md) for packaging checks.

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/lipgloss/v2"
+
 	"rampd/internal/keymap"
 )
 
@@ -32,6 +34,9 @@ track_count = 12
 
 [keybindings]
 play_pause = ["u", "ctrl+p"]
+
+[theme]
+progress_played = "#123ABC"
 `
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
@@ -50,6 +55,9 @@ play_pause = ["u", "ctrl+p"]
 	}
 	if opts.Artwork || opts.DreamCount != 8 || opts.Keys.Action("u") != keymap.PlayPause || opts.Keys.Action("p") != "" {
 		t.Fatal("UI options did not merge correctly")
+	}
+	if opts.Styles == nil || opts.Styles.ProgressFilled.GetForeground() != lipgloss.Color("#123ABC") {
+		t.Fatal("theme settings did not reach the app options")
 	}
 	_, _, err = parseOptions([]string{"-config", filepath.Join(root, "missing.toml")}, func(string) (string, bool) { return "", false })
 	if err == nil {

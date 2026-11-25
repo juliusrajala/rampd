@@ -85,9 +85,10 @@ type model struct {
 	playlistLoading  bool
 	playlistSeq      uint64
 
-	artworkEnabled bool
-	artworkLoading string
-	artworkCache   []artworkMsg
+	artworkEnabled  bool
+	artworkLoading  string
+	artworkCache    []artworkMsg
+	artworkRevision uint64
 }
 
 type refreshTick uint64
@@ -119,6 +120,7 @@ type Options struct {
 	DreamCount    int
 	Artwork       bool
 	Keys          keymap.Bindings
+	Styles        *theme.Styles
 	InitialTray   []music.Track
 	SaveTray      func([]music.Track) error
 }
@@ -129,8 +131,10 @@ type confirmation struct {
 }
 
 func New(ctx context.Context, server backend, options Options) tea.Model {
-	// Use the development theme while we tune the panel layout.
-	styles := theme.Development()
+	styles := theme.Default()
+	if options.Styles != nil {
+		styles = *options.Styles
+	}
 	input := textinput.New()
 	input.SetStyles(styles.Input)
 	input.SetVirtualCursor(false)
@@ -238,25 +242,7 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	case artworkMsg:
 		m.storeArtwork(msg)
 	case libraryMsg:
-		m.libraryLoading = false
-		m.libraryError = msg.err
-		if msg.err == nil {
-			m.library, m.libraryLoaded = msg.tracks, true
-			m.setLibraryRoot(artistsTab, msg.artists)
-			albums, songs := msg.albums, msg.songs
-			if m.sortByArtist[albumsTab] {
-				albums = orderMedia(albums, true)
-			}
-			if m.sortByArtist[songsTab] {
-				songs = orderMedia(songs, true)
-			}
-			m.setLibraryRoot(albumsTab, albums)
-			m.tabs[songsTab][0].setRows(songs)
-		}
-		if m.libraryInvalidated {
-			m.libraryInvalidated = false
-			return m.fetchLibrary()
-		}
+		return m.updateLibrary(msg)
 	case trayCopyMsg:
 		m.applyTrayCopy(msg)
 	case playlistsMsg:
@@ -327,6 +313,7 @@ func (m *model) updateState(msg stateMsg) tea.Cmd {
 		library = m.fetchLibrary()
 	}
 	if justConnected {
+		m.invalidateArtwork()
 		playlists = m.refreshStoredPlaylists()
 	}
 	if msg.action != nil {

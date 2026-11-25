@@ -14,7 +14,7 @@ import (
 func TestNavigationWhileLibraryArtworkAndDreamArePending(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
 	m.connected = true
-	m.Update(tea.WindowSizeMsg{Width: 90, Height: 24})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 	m.Update(keyRune('3'))
 	m.Update(prepareLibrary(fixtureTracks, nil))
 	if m.artworkLoading == "" {

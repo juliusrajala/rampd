@@ -266,6 +266,20 @@ func TestDisposableMPD(t *testing.T) {
 	if after := snapshot(""); after.QueueVersion != before.QueueVersion || after.SongID != before.SongID {
 		t.Fatalf("saving a playlist changed the active queue: %+v", after)
 	}
+	old := snapshot("")
+	missing := music.Track{URI: "missing/from-dream.flac"}
+	if err := client.Apply(ctx, music.Action{Operation: music.ReplaceAndPlay, Tracks: []music.Track{tracks[0], missing}}); err == nil {
+		t.Fatal("expected MPD to reject a missing Dream track")
+	}
+	current := snapshot("")
+	if len(current.Queue) != len(old.Queue) || current.State != old.State || current.SongID != old.SongID {
+		t.Fatalf("failed Dream replacement changed playback or left staged tracks: %+v", current)
+	}
+	for i := range current.Queue {
+		if current.Queue[i].ID != old.Queue[i].ID {
+			t.Fatalf("failed Dream replacement removed an original entry: %+v", current.Queue)
+		}
+	}
 	act(music.Action{Operation: music.ReplaceAndPlay, Tracks: tracks})
 	if s := snapshot(""); len(s.Queue) != 2 || s.State != "play" || s.Queue[0].ID != s.SongID {
 		t.Fatalf("replace/play did not start at the first track: %+v", s)

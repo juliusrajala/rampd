@@ -25,6 +25,7 @@ type Settings struct {
 		TrackCount int `toml:"track_count"`
 	} `toml:"dream"`
 	Keybindings map[string][]string `toml:"keybindings"`
+	Theme       map[string]string   `toml:"theme"`
 }
 
 func Defaults() Settings {

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"rampd/internal/keymap"
 	"rampd/internal/library"
 	"rampd/internal/music"
@@ -174,6 +176,30 @@ func prepareLibrary(tracks []music.Track, err error) libraryMsg {
 		sortRows(msg.songs)
 	}
 	return msg
+}
+
+func (m *model) updateLibrary(msg libraryMsg) tea.Cmd {
+	m.libraryLoading = false
+	m.libraryError = msg.err
+	if msg.err == nil {
+		m.library, m.libraryLoaded = msg.tracks, true
+		m.setLibraryRoot(artistsTab, msg.artists)
+		albums, songs := msg.albums, msg.songs
+		if m.sortByArtist[albumsTab] {
+			albums = orderMedia(albums, true)
+		}
+		if m.sortByArtist[songsTab] {
+			songs = orderMedia(songs, true)
+		}
+		m.setLibraryRoot(albumsTab, albums)
+		m.tabs[songsTab][0].setRows(songs)
+		m.invalidateArtwork()
+	}
+	if m.libraryInvalidated {
+		m.libraryInvalidated = false
+		return m.fetchLibrary()
+	}
+	return nil
 }
 
 func (m *model) setLibraryRoot(tab int, rows []row) {

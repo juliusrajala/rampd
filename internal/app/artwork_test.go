@@ -92,17 +92,44 @@ func TestSelectionSpacingKeepsPrimaryDetails(t *testing.T) {
 	m.Update(prepareLibrary(fixtureTracks, nil))
 	m.Update(keyRune('1'))
 
-	m.Update(tea.WindowSizeMsg{Width: 90, Height: 25})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 25})
 	rows := m.artworkRows()
-	if rows[0] != "" || rows[artRowCount+1] != "" || ansi.Strip(rows[artRowCount+2]) != "First" {
-		t.Fatal("roomy panel should pad above the cover and its text")
+	if rows[artRowCount] != "" || ansi.Strip(rows[artRowCount+1]) != "First" {
+		t.Fatal("roomy panel should leave space between the cover and its text")
 	}
 
-	m.Update(tea.WindowSizeMsg{Width: 90, Height: 24})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 22})
 	rows = m.artworkRows()
-	if rows[0] != "" || ansi.Strip(rows[artRowCount+1]) != "First" ||
-		!strings.Contains(ansi.Strip(rows[m.bodyHeight()-1]), "Length") {
+	if ansi.Strip(rows[artRowCount]) != "First" ||
+		!strings.Contains(ansi.Strip(rows[m.bodyHeight()]), "Length") {
 		t.Fatal("shorter panel should give primary details priority over extra padding")
+	}
+}
+
+func TestArtworkRefreshRetriesCachedMissAndDiscardsOldResult(t *testing.T) {
+	server := &artworkBackend{}
+	m := New(context.Background(), server, Options{Artwork: true}).(*model)
+	m.connected = true
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	library := prepareLibrary(fixtureTracks, nil)
+	_, command := m.Update(library)
+	_, command = m.Update(command())
+	if command != nil || len(server.requests) != 1 {
+		t.Fatal("a missing cover should not keep retrying on its own")
+	}
+	_, retry := m.Update(library)
+	if retry == nil {
+		t.Fatal("a library refresh should retry a cached miss")
+	}
+	stale := retry().(artworkMsg)
+	_, command = m.Update(library)
+	if command != nil {
+		t.Fatal("a refresh must not start a second overlapping artwork request")
+	}
+	stale.lines = []string{"old cover"}
+	_, command = m.Update(stale)
+	if len(m.artworkCache) != 0 || command == nil {
+		t.Fatal("old result was cached or did not release the request slot")
 	}
 }
 
@@ -112,7 +139,7 @@ func TestSelectionArtworkDoesNotFollowPlayback(t *testing.T) {
 	m.connected = true
 	m.status = music.Status{State: "play", SongID: 41}
 	m.queue = []music.Entry{{ID: 41, Track: fixtureTracks[2]}}
-	m.Update(tea.WindowSizeMsg{Width: 90, Height: 24})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 	m.Update(keyRune('3'))
 	_, first := m.Update(prepareLibrary(fixtureTracks, nil))
 	if first == nil {
@@ -134,7 +161,7 @@ func TestSelectionArtworkDoesNotFollowPlayback(t *testing.T) {
 		t.Fatal("no playback frame")
 	}
 	panel, playback := view[:playbackStart], view[playbackStart:]
-	if !strings.Contains(panel, "│ Violet") || strings.Contains(panel, "STALE COVER") {
+	if !strings.Contains(panel, "│    Violet") || strings.Contains(panel, "STALE COVER") {
 		t.Fatalf("selection panel did not follow the browsing cursor:\n%s", panel)
 	}
 	if !strings.Contains(playback, "Playing · Other — Plum") || strings.Contains(playback, "Violet") {

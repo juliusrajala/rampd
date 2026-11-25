@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 
 	"rampd/internal/music"
 )
@@ -48,6 +51,52 @@ func TestIdleStopsPeriodicStatusReads(t *testing.T) {
 	m.handleWatch(watchMsg{changes: music.SessionReady})
 	if !m.watching || !m.forceQueue || !m.needSnapshot || m.watchBackoff != time.Second {
 		t.Fatal("new watch connection should force a full status and queue refresh")
+	}
+}
+
+type watchBackend struct {
+	fakeBackend
+	watch func(context.Context, func(music.Changes)) error
+}
+
+func (b watchBackend) Watch(ctx context.Context, notify func(music.Changes)) error {
+	return b.watch(ctx, notify)
+}
+
+func TestStoppedWatchSchedulesReceiverAndRetry(t *testing.T) {
+	m := New(context.Background(), &fakeBackend{}, Options{}).(*model)
+	cmd := m.handleWatch(watchMsg{stopped: true})
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("expected a receiver and a retry, got %v", batch)
+	}
+	if m.update(watchRetry{}) == nil {
+		t.Fatal("retry message did not start a new watch")
+	}
+}
+
+func TestWatchCanExitWithoutAnEventReceiver(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sending := make(chan struct{})
+	server := &watchBackend{watch: func(ctx context.Context, notify func(music.Changes)) error {
+		close(sending)
+		notify(music.SessionReady)
+		return errors.New("watch stopped")
+	}}
+	m := New(ctx, server, Options{}).(*model)
+	done := make(chan struct{})
+	watch := m.runWatch()
+	go func() {
+		watch()
+		close(done)
+	}()
+	<-sending
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cancel did not release the watch with no event receiver")
 	}
 }
 
