@@ -1,10 +1,33 @@
 # rämpd player
 
+![RÄMPD pixel logo on a dark background with neon pixels](screenshots/banner.svg)
+
 A keyboard-first terminal client for [Music Player Daemon (MPD)](https://www.musicpd.org/). Browse your library, arrange tracks in a saved **Tray**, and use **Dream** to build a listening preview from music you already have. MPD handles playback and owns the live queue. rämpd does not start MPD or modify music files.
 
-I started rämpd after recovering much of my old music library. I liked how programmable MPD was, but I had trouble finding a client that felt right. I wanted a terminal player that made it as enjoyable to put a mix together as it was to play it.
+I started rämpd after recovering much of my old music library. I liked how programmable MPD was, but I had trouble finding a client that felt good for the age of streaming music players. I wanted a terminal player that made it enjoyable to put together playlists and mixes. Rämpd is a best estimation of what that could. The player is already customizable, but feel free to fork it and make your own run if it feels like it.
 
-## Quick start
+## Screenshots
+
+| Albums | Tray | Playlists |
+| :---: | :---: | :---: |
+| [![Albums view](screenshots/albums.png)](screenshots/albums.png) | [![Tray view](screenshots/tray.png)](screenshots/tray.png) | [![Playlists view](screenshots/playlists.png)](screenshots/playlists.png) |
+
+## Install
+
+Release downloads support Linux and macOS on x86-64 and ARM64. Once a [GitHub release](https://github.com/juliusrajala/r-mpd/releases) is available, download the installer:
+
+```sh
+curl -fL -o install-rampd.sh https://github.com/juliusrajala/r-mpd/releases/latest/download/install.sh
+```
+
+Choose one path:
+
+- **rämpd only:** Run `bash install-rampd.sh`. It verifies the archive checksum and installs the client in `~/.local/bin`. It does not change MPD.
+- **rämpd + local MPD:** Run `bash install-rampd.sh --with-mpd "$HOME/Music"`. Replace `"$HOME/Music"` with your music directory. The installer uses Homebrew, pacman, APT, or DNF if MPD or its setup tool `mpc` is missing. It creates a separate MPD configuration with a private Unix socket and stickers enabled. It does not overwrite an existing configuration. Follow the printed commands to start that instance, index your music, and open rämpd. MPD 0.24 or newer is needed to record play counts.
+
+Run `rampd` or `rämpd` if `~/.local/bin` is on your `PATH`. Otherwise, use `~/.local/bin/rampd`.
+
+### Build from source
 
 Start MPD and let it index your music. From this repository, use the Go version in [`go.mod`](go.mod) or later:
 
@@ -120,3 +143,7 @@ RAMPD_MPD_INTEGRATION=1 go test -race -count=1 ./...
 ```
 
 For a keyboard smoke test, also install `tmux` and `python3`, then run `bash scripts/smoke.sh`. These tests use fixture music and a private socket. They do not use your normal MPD server. See the [release checklist](docs/release-checklist.md) for packaging checks.
+
+## License
+
+[MIT](LICENSE).
