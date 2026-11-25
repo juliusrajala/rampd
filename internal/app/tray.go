@@ -24,19 +24,18 @@ type trayCopyMsg struct {
 	err      error
 }
 
-// Keep the mode rules shared by key dispatch and the command palette.
-func (m *model) trayActionAvailable(action keymap.Action) bool {
-	if m.tab != trayTab {
-		return true
+func (m *model) hiddenTrayMarks() int {
+	p := m.browsePage()
+	if p.filter == "" {
+		return 0
 	}
-	switch action {
-	case keymap.CopyTray, keymap.Append, keymap.Replace, keymap.Save, keymap.SeedDream, keymap.ShuffleTray:
-		return m.trayWholeMode
-	case keymap.MarkTray, keymap.MoveDown, keymap.MoveUp, keymap.Remove, keymap.SortAlbums, keymap.AddPlaylist:
-		return !m.trayWholeMode
-	default:
-		return true
+	hidden := len(m.trayMarks)
+	for _, row := range p.rows {
+		if m.trayMarks[m.tray[row.position].key] {
+			hidden--
+		}
 	}
+	return hidden
 }
 
 func (m *model) trayTracks() []music.Track {
@@ -131,6 +130,26 @@ func (m *model) editTray(action keymap.Action) {
 	m.trayChanged()
 }
 
+func (m *model) dedupeTray() {
+	before := len(m.tray)
+	seen := make(map[string]bool, before)
+	m.tray = slices.DeleteFunc(m.tray, func(entry trayEntry) bool {
+		if seen[entry.URI] {
+			delete(m.trayMarks, entry.key)
+			return true
+		}
+		seen[entry.URI] = true
+		return false
+	})
+	removed := before - len(m.tray)
+	if removed == 0 {
+		m.notice = "No duplicates in the Tray."
+		return
+	}
+	m.notice = fmt.Sprintf("Duplicates removed from Tray: %d", removed)
+	m.trayChanged()
+}
+
 func (m *model) shuffleTray() {
 	if len(m.tray) < 2 {
 		return
@@ -206,7 +225,7 @@ func (m *model) applyTrayCopy(msg trayCopyMsg) {
 		m.addTrayEntry(entry)
 	}
 	m.tabs[trayTab][0].setFilter("")
-	if (m.tab == queueTab || m.tab == trayTab) && m.prompt == noPrompt && m.confirmation == nil && !m.showHelp {
+	if (m.tab == queueTab || m.tab == trayTab) && m.prompt == noPrompt && m.confirmation == nil && m.help == noHelp {
 		m.tab = trayTab
 	}
 	m.notice = fmt.Sprintf("Copied queue to Tray: %d tracks.", len(msg.queue))

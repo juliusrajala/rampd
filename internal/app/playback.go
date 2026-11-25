@@ -2,11 +2,47 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"rampd/internal/music"
 )
+
+func (m *model) playingSong() (music.Track, bool) {
+	id := m.status.PlayingID()
+	if m.connected && id >= 0 {
+		for _, entry := range m.queue {
+			if entry.ID == id {
+				return entry.Track, true
+			}
+		}
+	}
+	return music.Track{}, false
+}
+
+func (m *model) focusPlayingSong() {
+	if !m.connected || m.status.PlayingID() < 0 {
+		m.notice = "No song is playing or paused."
+		return
+	}
+	queue := &m.tabs[queueTab][0]
+	id := m.status.PlayingID()
+	match := func(r row) bool { return r.id == id }
+	index := slices.IndexFunc(queue.rows, match)
+	if index < 0 {
+		index = slices.IndexFunc(queue.allRows, match)
+		if index < 0 {
+			m.notice = "The current song is not in the Queue."
+			return
+		}
+		queue.setFilter("")
+	}
+	m.tab, queue.cursor = queueTab, index
+	m.notice = ""
+}
 
 func (m *model) playbackLine() string {
 	if !m.connected {
@@ -24,13 +60,10 @@ func (m *model) playbackLine() string {
 	width := m.innerWidth(m.bodyWidth())
 	var song, artist, times string
 	if status.State == "play" || status.State == "pause" {
-		for _, entry := range m.queue {
-			if entry.ID == status.SongID {
-				song = clean(trackTitle(entry.Track))
-				if name := trackArtist(entry.Track); name != "" {
-					artist = " — " + m.styles.ArtistName.Render(clean(name))
-				}
-				break
+		if track, ok := m.playingSong(); ok {
+			song = clean(trackTitle(track))
+			if name := trackArtist(track); name != "" {
+				artist = " — " + m.styles.ArtistName.Render(clean(name))
 			}
 		}
 		if status.Duration > 0 {

@@ -27,8 +27,8 @@ func TestConnectionStatusAlignsWithMainPanel(t *testing.T) {
 			if !strings.HasSuffix(statusLine, status) || ansi.StringWidth(statusLine) != m.sidebarWidth()+m.bodyWidth() {
 				t.Errorf("status not at the main panel right edge at %dx%d: %q", size.Width, size.Height, statusLine)
 			}
-			left := strings.Repeat(" ", m.sidebarWidth())
-			if !strings.HasPrefix(statusLine, left+"A") && !strings.HasPrefix(statusLine, left+"…") {
+			notice := ansi.Cut(statusLine, m.sidebarWidth(), m.width)
+			if !strings.HasPrefix(notice, "A") && !strings.HasPrefix(notice, "…") {
 				t.Errorf("notice not at the main panel left edge: %q", statusLine)
 			}
 			if strings.Count(view.Content, status) != 1 || strings.Contains(lines[len(lines)-1], status) {
@@ -95,18 +95,32 @@ func TestOnlyListAndPlaybackHaveBorders(t *testing.T) {
 				t.Fatalf("expected %d rows, got %d", tc.height, len(lines))
 			}
 			statusRow, _ := findStatusLine(lines, "MPD: connecting")
-			left := strings.Repeat(" ", m.sidebarWidth())
-			if statusRow < 0 || !strings.HasPrefix(lines[statusRow+1], left+"╭ Playback") {
+			main := func(line string) string { return ansi.Cut(line, m.sidebarWidth(), m.width) }
+			if statusRow < 0 || !strings.HasPrefix(main(lines[statusRow+1]), "╭ Playback") {
 				t.Fatal("status should sit just above Playback")
 			}
 			right := m.sidebarWidth() + m.bodyWidth()
-			for _, line := range lines[statusRow+1 : statusRow+4] {
-				if !strings.HasPrefix(line, left) || ansi.StringWidth(line) != right {
+			for _, line := range lines[statusRow+1:] {
+				if ansi.StringWidth(line) != right {
 					t.Errorf("Playback should align with the main panel: %q", line)
 				}
 			}
-			if hint := lines[len(lines)-1]; !strings.HasPrefix(hint, left+"  [/] Filter") || ansi.StringWidth(hint) > right {
-				t.Fatalf("key hints should align with the playback text: %q", hint)
+			gap, ok := strings.CutPrefix(main(lines[statusRow+3]), "│")
+			gap, end := strings.CutSuffix(gap, "│")
+			if !ok || !end || strings.TrimSpace(gap) != "" {
+				t.Fatalf("expected a blank line before Playback shortcuts: %q", gap)
+			}
+			hint := strings.Trim(main(lines[statusRow+4]), "│")
+			if !strings.HasPrefix(strings.TrimSpace(hint), "[p] Play/Pause") || strings.Contains(hint, "Filter") {
+				t.Fatalf("only playback keys should be inside Playback: %q", hint)
+			}
+			leftPad := len(hint) - len(strings.TrimLeft(hint, " "))
+			rightPad := len(hint) - len(strings.TrimRight(hint, " "))
+			if rightPad < leftPad || rightPad > leftPad+1 {
+				t.Fatalf("Playback shortcuts not centered: %q", hint)
+			}
+			if !strings.HasPrefix(main(lines[len(lines)-1]), "╰") {
+				t.Fatalf("unexpected footer below Playback: %q", lines[len(lines)-1])
 			}
 			if m.sidebarWidth() > 0 {
 				leftWidth := m.sidebarWidth()
@@ -165,8 +179,8 @@ func TestSavePromptStaysBelowPlaybackFrame(t *testing.T) {
 		t.Fatalf("wrong save cursor position: %+v", cursor)
 	}
 	lines := strings.Split(ansi.Strip(view.Content), "\n")
-	left := strings.Repeat(" ", m.sidebarWidth())
-	if !strings.HasPrefix(lines[cursor.Y-1], left+"╰") || !strings.HasPrefix(lines[cursor.Y], left+"  Save as: ") {
+	main := func(line string) string { return ansi.Cut(line, m.sidebarWidth(), m.width) }
+	if !strings.HasPrefix(main(lines[cursor.Y-1]), "╰") || !strings.HasPrefix(main(lines[cursor.Y]), "  Save as: ") {
 		t.Fatal("save prompt should be outside the playback frame")
 	}
 }

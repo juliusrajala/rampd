@@ -13,6 +13,56 @@ import (
 	"rampd/internal/theme"
 )
 
+func TestFocusPlayingSong(t *testing.T) {
+	for _, tc := range []struct{ name, state, filter, wantFilter string }{
+		{"playing visible", "play", "First", "First"},
+		{"paused hidden", "pause", "Second", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := &fakeBackend{}
+			m := New(context.Background(), server, Options{}).(*model)
+			m.Update(tea.WindowSizeMsg{Width: 112, Height: 24})
+			m.connected, m.tab = true, trayTab
+			m.status = music.Status{State: tc.state, SongID: 9}
+			m.queue = []music.Entry{
+				{ID: 8, Track: fixtureTracks[1]},
+				{ID: 10, Track: fixtureTracks[0]},
+				{ID: 9, Track: fixtureTracks[1]},
+			}
+			m.buildQueuePage()
+			m.tabs[queueTab][0].setFilter(tc.filter)
+			if !strings.Contains(ansi.Strip(m.View().Content), "[i] Focus") {
+				t.Fatal("Playback did not advertise Focus")
+			}
+			m.Update(keyRune('i'))
+			got, ok := m.selected()
+			if !ok || m.tab != queueTab || got.id != 9 || m.page().filter != tc.wantFilter {
+				t.Fatalf("Focus did not select the playing song: view %d, queue ID %d, filter %q", m.tab, got.id, m.page().filter)
+			}
+			if len(server.actions) != 0 || m.status.SongID != 9 || m.status.State != tc.state {
+				t.Fatal("Focus changed playback")
+			}
+		})
+	}
+}
+
+func TestFocusMissingSongKeepsCurrentView(t *testing.T) {
+	m := New(context.Background(), &fakeBackend{}, Options{}).(*model)
+	m.Update(prepareLibrary(fixtureTracks, nil))
+	m.tab, m.connected = trayTab, true
+	m.status = music.Status{State: "play", SongID: 1}
+
+	m.Update(keyRune('i'))
+	if m.tab != trayTab || m.notice != "The current song is not in the Queue." {
+		t.Fatal("Focus should report a missing song without leaving the current view")
+	}
+	m.status.State = "stop"
+	m.Update(keyRune('i'))
+	if m.tab != trayTab || m.notice != "No song is playing or paused." {
+		t.Fatal("Focus should report that there is no current song")
+	}
+}
+
 func TestViewShowsStateWithoutColor(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})

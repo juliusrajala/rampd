@@ -70,14 +70,14 @@ func (m *model) openPlaylist(name string) tea.Cmd {
 	}
 }
 
-func (m *model) updatePlaylists(msg playlistsMsg) {
+func (m *model) updatePlaylists(msg playlistsMsg) tea.Cmd {
 	if msg.seq != m.playlistsSeq {
-		return
+		return nil
 	}
 	m.playlistsLoading = false
 	if msg.err != nil {
 		m.notice = fmt.Sprintf("Playlists: %v", msg.err)
-		return
+		return nil
 	}
 	rows := make([]row, 0, len(msg.names))
 	for _, name := range msg.names {
@@ -90,6 +90,14 @@ func (m *model) updatePlaylists(msg playlistsMsg) {
 		m.tabs[playlistsTab] = stack[:1]
 		m.playlistLoading = false
 	}
+	if len(msg.names) == 0 {
+		return nil
+	}
+	return m.fetchPlaylistSummaries(msg.names, msg.seq)
+}
+
+func (m *model) onPlaylistList() bool {
+	return m.tab == playlistsTab && len(m.tabs[playlistsTab]) == 1
 }
 
 func (m *model) updatePlaylist(msg playlistMsg) {
@@ -166,10 +174,8 @@ func (m *model) selectionTracks(item row) []music.Track {
 	if m.tab != queueTab {
 		return item.tracks
 	}
-	for _, entry := range m.queue {
-		if entry.ID == item.id {
-			return []music.Track{entry.Track}
-		}
+	if track, ok := m.rowTrack(item); ok {
+		return []music.Track{track}
 	}
 	return nil
 }

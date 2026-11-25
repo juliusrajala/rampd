@@ -7,14 +7,11 @@ import (
 )
 
 func (m *model) canSwitchTrackColumn() bool {
-	if m.prompt == palettePrompt {
-		return false
-	}
 	switch m.tab {
 	case trayTab, dreamTab, queueTab:
 		return true
 	case playlistsTab:
-		return m.page().playlist != ""
+		return m.browsePage().playlist != ""
 	default:
 		return false
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -87,6 +88,21 @@ func TestSelectionRowsShowDetailsForEachKind(t *testing.T) {
 	check("First", "Artist Violet", "Album Bright", "Length —", "Genre Jazz")
 }
 
+func TestSongDatesFitAtNormalHeight(t *testing.T) {
+	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
+	m.Update(tea.WindowSizeMsg{Width: 112, Height: 24})
+	track := fixtureTracks[0]
+	track.Added = time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	track.Modified = time.Date(2025, 4, 3, 0, 0, 0, 0, time.UTC)
+	m.Update(prepareLibrary([]music.Track{track}, nil))
+	view := strings.Join(strings.Fields(ansi.Strip(m.View().Content)), " ")
+	for _, detail := range []string{"Added 2026-01-02", "Modified 2025-04-03"} {
+		if !strings.Contains(view, detail) {
+			t.Errorf("missing track detail %q", detail)
+		}
+	}
+}
+
 func TestSelectionSpacingKeepsPrimaryDetails(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{Artwork: true}).(*model)
 	m.Update(prepareLibrary(fixtureTracks, nil))
@@ -98,7 +114,7 @@ func TestSelectionSpacingKeepsPrimaryDetails(t *testing.T) {
 		t.Fatal("roomy panel should leave space between the cover and its text")
 	}
 
-	m.Update(tea.WindowSizeMsg{Width: 100, Height: 22})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 23})
 	rows = m.artworkRows()
 	if ansi.Strip(rows[artRowCount]) != "First" ||
 		!strings.Contains(ansi.Strip(rows[m.bodyHeight()]), "Length") {

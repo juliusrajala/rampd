@@ -37,6 +37,8 @@ func (*fakeBackend) Watch(ctx context.Context, _ func(music.Changes)) error {
 	return ctx.Err()
 }
 
+func (*fakeBackend) RecordPlay(context.Context, string, time.Time) error { return nil }
+
 func (f *fakeBackend) Apply(_ context.Context, a music.Action) error {
 	f.actions = append(f.actions, a)
 	return nil
@@ -73,8 +75,8 @@ func TestBrowseAndAppendAlbum(t *testing.T) {
 	if gotRow.label != "First" {
 		t.Fatalf("first track: %+v", gotRow)
 	}
-	m.Update(keyRune('h'))
-	m.Update(keyRune('h'))
+	m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	gotRow, _ = m.selected()
 	if gotRow.label != "Violet" {
 		t.Fatalf("artist selection was not preserved: %+v", gotRow)
@@ -161,7 +163,10 @@ func TestViewFitsTerminal(t *testing.T) {
 	for _, size := range []tea.WindowSizeMsg{{Width: 1, Height: 1}, {Width: 12, Height: 5}, {Width: 80, Height: 25}} {
 		m.Update(size)
 		for _, mode := range []string{"browse", "search", "help", "confirm"} {
-			m.prompt, m.showHelp = noPrompt, mode == "help"
+			m.prompt, m.help = noPrompt, noHelp
+			if mode == "help" {
+				m.help = keysHelp
+			}
 			if mode == "search" {
 				m.prompt = searchPrompt
 			}

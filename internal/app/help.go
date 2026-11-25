@@ -1,11 +1,77 @@
 package app
 
 import (
-	"fmt"
 	"strings"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"rampd/internal/keymap"
 )
+
+type helpView uint8
+
+const (
+	noHelp helpView = iota
+	keysHelp
+	guideHelp
+)
+
+func (m *model) guideRows() []string {
+	width := max(1, m.innerWidth(m.bodyWidth()))
+	sections := [...]struct{ title, body string }{
+		{"Library", "Browse your MPD music library by song, album, or artist. Play a selection now, add it to the Queue, or set it aside in the Tray."},
+		{"Queue", "MPD plays from this list. Changes to the Queue are live. Add tracks to play them later, or select a track to play it now."},
+		{"Tray", "Collect and arrange tracks here without changing the Queue. You can copy the Queue into the Tray, add the Tray to the Queue, replace the Queue, or save the Tray as a playlist."},
+		{"Dream", "Make a preview from your library, or use the Tray as a starting point. Generating a preview does not change the Tray or the Queue. You can play, queue, or save the result."},
+		{"Playlists", "These are named track lists saved in MPD. Open one to play or add tracks to the Queue. You can also save tracks from the Queue, Tray, or Dream for later."},
+	}
+	var lines []string
+	for i, section := range sections {
+		if i > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, m.styles.Heading.Render(section.title))
+		lines = append(lines, strings.Split(ansi.Wrap(section.body, width, ""), "\n")...)
+	}
+	return lines
+}
+
+func (m *model) helpKey(raw string, action keymap.Action) tea.Cmd {
+	if raw == "esc" {
+		m.help = noHelp
+		return nil
+	}
+	switch action {
+	case keymap.Quit:
+		return tea.Quit
+	case keymap.Up:
+		m.scrollHelp(-1)
+	case keymap.Down:
+		m.scrollHelp(1)
+	case keymap.PageUp:
+		m.scrollHelp(-m.listHeight())
+	case keymap.PageDown:
+		m.scrollHelp(m.listHeight())
+	case keymap.First, keymap.Home:
+		m.helpTop = 0
+	case keymap.Last:
+		m.scrollHelp(len(m.helpPageRows()))
+	}
+	return nil
+}
+
+func (m *model) helpPageRows() []string {
+	if m.help == guideHelp {
+		return m.guideRows()
+	}
+	return m.helpRows()
+}
+
+func (m *model) scrollHelp(delta int) {
+	last := max(0, len(m.helpPageRows())-m.listHeight())
+	m.helpTop = max(0, min(m.helpTop+delta, last))
+}
 
 func joinHints(hints ...string) string {
 	return strings.Join(nonemptyHints(hints), "   ")
@@ -33,106 +99,91 @@ func (m *model) actionHint(action keymap.Action, label string) string {
 }
 
 func (m *model) helpRows() []string {
-	h := m.keys.Hint
-	return []string{
-		joinHints(h(keymap.NextTab, "Next view"), h(keymap.PreviousTab, "Previous view")),
-		joinHints(h(keymap.Down, "Down"), h(keymap.Up, "Up"), h(keymap.Back, "Back"), h(keymap.Forward, "Open")),
-		joinHints(h(keymap.Open, "Open or play"), h(keymap.Append, "Append to queue")),
-		joinHints(h(keymap.Filter, "Filter this list"), h(keymap.Cancel, "Clear filter"), h(keymap.Refresh, "Refresh")),
-		joinHints(h(keymap.PlayPause, "Play/pause"), h(keymap.Next, "Next"), h(keymap.Previous, "Previous")),
-		joinHints(h(keymap.SeekBack, "Seek back"), h(keymap.SeekForward, "Seek forward"), h(keymap.Random, "Random"), h(keymap.Repeat, "Repeat")),
-		"Queue: " + joinHints(h(keymap.Remove, "Remove"), h(keymap.MoveDown, "Move down"), h(keymap.MoveUp, "Move up"), h(keymap.Shuffle, "Shuffle")),
-		"Queue: " + joinHints(h(keymap.Clear, "Clear"), h(keymap.Save, "Save as playlist")),
-		"Albums/Songs: " + h(keymap.SortAlbums, "Change sort order"),
-		"Track lists: " + h(keymap.SortAlbums, "Switch artist or album column"),
-		joinHints(h(keymap.AddTray, "Collect in Tray"), h(keymap.CopyTray, "Copy live queue to Tray")),
-		"Tray edit: " + joinHints(h(keymap.TrayHints, "Switch mode"), h(keymap.MarkTray, "Mark"), h(keymap.MoveDown, "Down"), h(keymap.MoveUp, "Up"), h(keymap.Remove, "Remove")),
-		"Tray: " + joinHints(h(keymap.Append, "Queue all"), h(keymap.Replace, "Replace queue"), h(keymap.Save, "Save"), h(keymap.SeedDream, "Dream from Tray")),
-		"Dream: " + joinHints(h(keymap.First, "Generate"), h(keymap.Open, "Play"), h(keymap.Replace, "Replace queue"), h(keymap.Save, "Save")),
-		"Playlists: " + joinHints(h(keymap.NewPlaylist, "New"), h(keymap.Rename, "Rename"), h(keymap.Clear, "Delete")),
-		"Open playlist: " + joinHints(h(keymap.MoveDown, "Move down"), h(keymap.MoveUp, "Move up"), h(keymap.Remove, "Remove"), h(keymap.AppendAll, "Queue all")),
-		joinHints(h(keymap.AddPlaylist, "Add to playlist"), h(keymap.Commands, "Commands"), h(keymap.Quit, "Quit")),
-	}
-}
-
-func (m *model) trayHints() (label string, actions []string) {
 	h := m.actionHint
-	if m.trayWholeMode {
-		actions = append(actions, h(keymap.CopyTray, "Copy Queue"))
-		if len(m.tray) > 0 {
-			actions = append(actions, h(keymap.Append, "Append"), h(keymap.Replace, "Replace"),
-				h(keymap.Save, "Save"), h(keymap.SeedDream, "Dream"))
-		}
-		return "Whole Tray", actions
+	heading := m.styles.AccentText.Render
+	columns := [][]string{
+		nonemptyHints([]string{
+			heading("General"),
+			h(keymap.Up, "Up"), h(keymap.Down, "Down"), h(keymap.PageUp, "Page up"), h(keymap.PageDown, "Page down"),
+			h(keymap.Back, "Back"), h(keymap.Forward, "Open"), h(keymap.Open, "Open or play"),
+			h(keymap.NextTab, "Next view"), h(keymap.PreviousTab, "Previous view"),
+			h(keymap.Filter, "Filter"), h(keymap.Cancel, "Clear filter"), h(keymap.Refresh, "Refresh"),
+			h(keymap.Commands, "Commands"), h(keymap.Help, "Keybindings"), h(keymap.Guide, "Help"), h(keymap.Quit, "Quit"),
+		}),
+		nonemptyHints([]string{
+			heading("Playback"),
+			h(keymap.PlayPause, "Play/Pause"), h(keymap.Previous, "Prev"), h(keymap.Next, "Next"),
+			h(keymap.FocusSong, "Focus song"),
+			h(keymap.SeekBack, "Seek back"), h(keymap.SeekForward, "Seek forward"), h(keymap.Random, "Random"), h(keymap.Repeat, "Repeat"),
+		}),
+		nonemptyHints([]string{
+			heading("By view"),
+			"Library", h(keymap.SortAlbums, "Sort"), h(keymap.AddTray, "Add to Tray"), h(keymap.Append, "Add to queue"), h(keymap.AddPlaylist, "Add to playlist"),
+			"Track lists", h(keymap.SortAlbums, "Switch column"), h(keymap.MoveUp, "Move up"), h(keymap.MoveDown, "Move down"), h(keymap.Remove, "Remove track"),
+			"Tray and Queue", h(keymap.CopyTray, "Copy queue"), h(keymap.MarkTray, "Mark (Tray)"), h(keymap.Shuffle, "Shuffle"), h(keymap.DedupeTray, "Dedupe Tray"),
+			h(keymap.Replace, "Replace queue"), h(keymap.Clear, "Clear queue"), h(keymap.Save, "Save playlist"),
+			"Dream", h(keymap.SeedDream, "Seed from Tray"), h(keymap.First, "New preview"),
+			"Playlists", h(keymap.NewPlaylist, "New playlist"), h(keymap.Rename, "Rename"), h(keymap.Clear, "Delete list"), h(keymap.AppendAll, "Queue all"),
+		}),
 	}
-
-	label = "Edit tracks"
-	if len(m.trayMarks) > 0 {
-		label = fmt.Sprintf("%d marked", len(m.trayMarks))
-		if p := m.page(); p.filter != "" {
-			hidden := len(m.trayMarks)
-			for _, row := range p.rows {
-				if m.trayMarks[m.tray[row.position].key] {
-					hidden--
-				}
+	width := m.innerWidth(m.bodyWidth())
+	const gap = 2
+	if width < 3*21+2*gap {
+		return append(append(append(columns[0], ""), append(columns[1], "")...), columns[2]...)
+	}
+	colWidth := (width - 2*gap) / 3
+	lines := make([]string, max(len(columns[0]), len(columns[1]), len(columns[2])))
+	for col, entries := range columns {
+		for i := range lines {
+			line := ""
+			if i < len(entries) {
+				line = ansi.Truncate(entries[i], colWidth, "…")
 			}
-			if hidden > 0 {
-				label += fmt.Sprintf(" · %d hidden", hidden)
+			lines[i] += line
+			if col < len(columns)-1 {
+				lines[i] += strings.Repeat(" ", colWidth+gap-ansi.StringWidth(line))
 			}
 		}
 	}
-	if len(m.tray) > 0 {
-		actions = append(actions, h(keymap.MarkTray, "Mark"), h(keymap.MoveDown, "Down"),
-			h(keymap.MoveUp, "Up"), h(keymap.Remove, "Remove"), h(keymap.SortAlbums, m.trackColumnCommand()))
-	}
-	if m.page().filter != "" {
-		actions = append(actions, h(keymap.Cancel, "Clear filter"))
-	} else {
-		actions = append(actions, h(keymap.Filter, "Filter"))
-	}
-	return label, actions
+	return lines
 }
 
-func (m *model) trayFooter() string {
-	label, actions := m.trayHints()
+func (m *model) playbackHints() string {
 	h := m.actionHint
-	switchMode := h(keymap.TrayHints, "Mode")
-	parts := []string{switchMode, m.styles.AccentText.Render(label)}
-	if width := m.innerWidth(m.bodyWidth()); width < 65 || switchMode == "" {
-		label := "Commands"
-		if width < 42 {
-			label = "Menu"
+	width := m.innerWidth(m.bodyWidth())
+	play, prev, next := "Play/Pause", "Prev", "Next"
+	focus := ""
+	back, forward := h(keymap.SeekBack, "−5s"), h(keymap.SeekForward, "+5s")
+	if m.connected && m.status.PlayingID() >= 0 {
+		focus = h(keymap.FocusSong, "Focus")
+		core := strings.Join(nonemptyHints([]string{h(keymap.PlayPause, play), focus,
+			h(keymap.Previous, prev), h(keymap.Next, next), back, forward}), " ")
+		if focus != "" && ansi.StringWidth(core) > width {
+			play, prev, next = "Play", "←", "→"
+			if m.status.State == "play" {
+				play = "Pause"
+			}
 		}
-		parts = append(parts, h(keymap.Commands, label))
 	}
-	return strings.Join(nonemptyHints(append(parts, actions...)), "  ")
-}
-
-func (m *model) actionHints() string {
-	h := m.actionHint
-	var actions []string
-	if m.showFilter() {
-		actions = append(actions, h(keymap.Cancel, "Clear filter"))
-	}
-	actions = append(actions, h(keymap.Filter, "Filter"), h(keymap.Commands, "Commands"))
-	if m.onMediaList() {
-		actions = append(actions, h(keymap.SortAlbums, m.nextMediaSort()))
-	} else if m.canSwitchTrackColumn() {
-		actions = append(actions, h(keymap.SortAlbums, m.trackColumnCommand()))
-	}
-	switch m.tab {
-	case dreamTab:
-		actions = append(actions, h(keymap.First, "Generate"), h(keymap.Open, "Play session"), h(keymap.Save, "Save"))
-	case queueTab:
-		actions = append(actions, h(keymap.CopyTray, "Copy to Tray"), h(keymap.Open, "Play"), h(keymap.Remove, "Remove"))
-	case playlistsTab:
-		if m.page().playlist == "" {
-			actions = append(actions, h(keymap.NewPlaylist, "New"), h(keymap.Rename, "Rename"), h(keymap.Clear, "Delete"))
-		} else {
-			actions = append(actions, h(keymap.MoveDown, "Move down"), h(keymap.Remove, "Remove"), h(keymap.AppendAll, "Queue all"))
+	var line string
+	for _, hint := range []string{
+		h(keymap.PlayPause, play), focus, h(keymap.Previous, prev), h(keymap.Next, next),
+		back, forward, h(keymap.Random, "Random"), h(keymap.Repeat, "Repeat"),
+	} {
+		if hint == "" {
+			continue
 		}
-	default:
-		actions = append(actions, h(keymap.AddTray, "Collect in Tray"), h(keymap.Open, "Open/play"), h(keymap.Append, "Append"))
+		candidate := hint
+		if line != "" {
+			candidate = line + " " + hint
+		}
+		if ansi.StringWidth(candidate) > width {
+			break
+		}
+		line = candidate
 	}
-	return joinHints(append(actions, h(keymap.Help, "Keys"))...)
+	if line == "" {
+		return ""
+	}
+	return strings.Repeat(" ", (width-ansi.StringWidth(line))/2) + line
 }

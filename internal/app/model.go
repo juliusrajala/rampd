@@ -23,6 +23,7 @@ type backend interface {
 	Artwork(context.Context, string) ([]byte, error)
 	Apply(context.Context, music.Action) error
 	Watch(context.Context, func(music.Changes)) error
+	RecordPlay(context.Context, string, time.Time) error
 }
 
 type model struct {
@@ -49,6 +50,8 @@ type model struct {
 	forceQueue   bool
 	sampledAt    time.Time
 	clockTime    time.Time
+	play         observedPlay
+	songStats    songStatsCache
 
 	tabs               [len(tabNames)][]page
 	tab                int
@@ -64,16 +67,16 @@ type model struct {
 	palettePage        page
 	saveAction         music.Action
 	confirmation       *confirmation
-	showHelp           bool
+	help               helpView
+	helpTop            int
 
-	tray          []trayEntry
-	trayNextKey   int
-	trayMarks     map[int]bool
-	trayWholeMode bool
-	trayRevision  uint64
-	trayCopying   bool
-	saveTray      func([]music.Track) error
-	traySaveErr   error
+	tray         []trayEntry
+	trayNextKey  int
+	trayMarks    map[int]bool
+	trayRevision uint64
+	trayCopying  bool
+	saveTray     func([]music.Track) error
+	traySaveErr  error
 
 	dreamStrategy dream.Strategy
 	dreamCount    int
@@ -217,8 +220,11 @@ func (m *model) act(a music.Action) tea.Cmd {
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmd := m.update(msg)
+	if m.prompt == palettePrompt {
+		m.palettePage.setRows(m.commandRows())
+	}
 	m.fitPage()
-	return m, tea.Batch(cmd, m.requestArtwork())
+	return m, tea.Batch(cmd, m.requestArtwork(), m.requestSongStats())
 }
 
 func (m *model) update(msg tea.Msg) tea.Cmd {
@@ -226,13 +232,25 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.resizeInput()
+		if m.help != noHelp {
+			m.scrollHelp(0)
+		}
 	case refreshTick:
 		if !m.busy && (!m.connected || !m.watching) && uint64(msg) == m.refreshSeq {
 			return m.requestSnapshot()
 		}
 	case progressTick:
 		m.clockTime = time.Time(msg)
-		return nextProgressTick()
+		return tea.Batch(nextProgressTick(), m.observePlay(m.clockTime))
+	case songStatsMsg:
+		m.songStats.finish(msg)
+	case playRecorded:
+		if m.songStats.result.uri == msg.uri || m.songStats.pending == msg.uri {
+			m.songStats.invalidate()
+		}
+		if msg.err != nil {
+			m.notice = fmt.Sprintf("Play history: %v", msg.err)
+		}
 	case watchMsg:
 		return m.handleWatch(msg)
 	case watchRetry:
@@ -246,7 +264,9 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	case trayCopyMsg:
 		m.applyTrayCopy(msg)
 	case playlistsMsg:
-		m.updatePlaylists(msg)
+		return m.updatePlaylists(msg)
+	case playlistSummariesMsg:
+		m.updatePlaylistSummaries(msg)
 	case playlistMsg:
 		m.updatePlaylist(msg)
 	case dreamMsg:
@@ -283,6 +303,7 @@ func (m *model) refreshAfter(delay time.Duration) tea.Cmd {
 func (m *model) updateState(msg stateMsg) tea.Cmd {
 	m.busy = false
 	if msg.readError != nil {
+		m.play.at = time.Time{} // Do not count time without a connection.
 		m.connected, m.connectionFailed = false, true
 		m.pending = nil
 		m.notice = fmt.Sprintf("MPD: %v", msg.readError)
@@ -308,12 +329,14 @@ func (m *model) updateState(msg stateMsg) tea.Cmd {
 	case msg.action != nil && msg.action.Operation == music.ReplaceQueue:
 		m.notice = "Replaced live queue with the Tray."
 	}
+	record := m.observePlay(m.sampledAt)
 	var library, playlists tea.Cmd
 	if justConnected && !m.libraryLoaded {
 		library = m.fetchLibrary()
 	}
 	if justConnected {
 		m.invalidateArtwork()
+		m.songStats.invalidate()
 		playlists = m.refreshStoredPlaylists()
 	}
 	if msg.action != nil {
@@ -322,13 +345,13 @@ func (m *model) updateState(msg stateMsg) tea.Cmd {
 	if len(m.pending) > 0 {
 		a := m.pending[0]
 		m.pending = m.pending[1:]
-		return tea.Batch(library, playlists, m.act(a))
+		return tea.Batch(library, playlists, record, m.act(a))
 	}
 	if m.needSnapshot {
-		return tea.Batch(library, playlists, m.requestSnapshot())
+		return tea.Batch(library, playlists, record, m.requestSnapshot())
 	}
 	if !m.watching {
-		return tea.Batch(library, playlists, m.refreshAfter(time.Second))
+		return tea.Batch(library, playlists, record, m.refreshAfter(time.Second))
 	}
-	return tea.Batch(library, playlists)
+	return tea.Batch(library, playlists, record)
 }

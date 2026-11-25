@@ -12,8 +12,16 @@ import (
 )
 
 func (m *model) fitPage() {
-	p := m.page()
-	height := max(1, m.listHeight())
+	if !m.paletteInMain() {
+		fitList(m.browsePage(), m.listHeight())
+	}
+	if m.prompt == palettePrompt {
+		m.fitPalette()
+	}
+}
+
+func fitList(p *page, height int) {
+	height = max(1, height)
 	p.top = max(0, min(p.top, max(0, len(p.rows)-height)))
 	if p.cursor < p.top {
 		p.top = p.cursor
@@ -44,24 +52,31 @@ func (m *model) View() tea.View {
 		tabs = append(tabs, marker+label)
 	}
 
-	tabLine := strings.Join(tabs, "  ")
-	if ansi.StringWidth(tabLine) > m.innerWidth(m.width) {
-		tabLine = fmt.Sprintf("Tab: %s", tabNames[m.tab])
-	}
+	tabLine := m.compactNavigation(tabs)
 	title := clean(m.page().title)
-	if m.tab == trayTab && m.prompt != palettePrompt && len(m.trayMarks) > 0 {
-		title += fmt.Sprintf(" · %d marked", len(m.trayMarks))
+	if m.paletteInMain() {
+		title = "↑↓ Select · ↵ Run · Esc Close"
 	}
-	if m.onMediaList() {
+	if m.tab == trayTab && !m.paletteInMain() && len(m.trayMarks) > 0 {
+		title += fmt.Sprintf(" · %d marked", len(m.trayMarks))
+		if hidden := m.hiddenTrayMarks(); hidden > 0 {
+			title += fmt.Sprintf(" · %d hidden", hidden)
+		}
+	}
+	if !m.paletteInMain() && m.onMediaList() {
 		title += " · by " + m.mediaOrderLabel()
-	} else if m.canSwitchTrackColumn() {
+	} else if !m.paletteInMain() && m.canSwitchTrackColumn() {
 		title += " · " + m.trackColumnName()
 	}
 	var rows, footer []string
-	if m.showHelp {
-		title = "Keys (press any key to close)"
-		rows = m.helpRows()
-	} else {
+	switch m.help {
+	case guideHelp:
+		title = "Help · ↑↓ Scroll · Esc Close"
+		rows = m.helpPageRows()[m.helpTop:]
+	case keysHelp:
+		title = "Keybindings · ↑↓ Scroll · Esc Close"
+		rows = m.helpPageRows()[m.helpTop:]
+	default:
 		rows = m.viewRows()
 	}
 	rows = rows[:min(len(rows), m.listHeight())]
@@ -69,9 +84,10 @@ func (m *model) View() tea.View {
 		rows = append([]string{m.filterLine()}, rows...)
 	}
 	rows = append(rows, make([]string, m.bodyHeight()-len(rows))...)
-	playback := m.playbackWithProgress()
+	playback := []string{m.playbackWithProgress()}
 	var inputRow int
-	notice := ""
+	notice := m.notice
+	modal := m.prompt == playlistNamePrompt || m.confirmation != nil
 	footerHeight := m.footerHeight()
 	showStatus := m.height >= 5 && (m.prompt != playlistNamePrompt || footerHeight > 2)
 	switch {
@@ -85,26 +101,22 @@ func (m *model) View() tea.View {
 		} else {
 			footer = append(footer, joinHints(hints, question))
 		}
-	case m.tab == trayTab && m.prompt == noPrompt && !m.showHelp:
-		footer = append(footer, m.trayFooter())
-		notice = m.notice
-		if m.traySaveErr != nil {
-			notice = fmt.Sprintf("Tray not saved: %v", m.traySaveErr)
+	case m.tab == trayTab && m.traySaveErr != nil:
+		notice = fmt.Sprintf("Tray not saved: %v", m.traySaveErr)
+	case m.tab == dreamTab && m.dreamLoading:
+		notice = "Generating a Dream preview…"
+	}
+	if !modal {
+		// Normal screens use the former footer row for playback shortcuts.
+		footerHeight = 0
+		if showStatus {
+			hints := ""
+			if m.prompt == noPrompt && m.help == noHelp {
+				hints = m.playbackHints()
+			}
+			playback = append(playback, make([]string, m.playbackGap())...)
+			playback = append(playback, hints)
 		}
-	default:
-		hint := m.actionHints()
-		notice = m.notice
-		if m.tab == dreamTab && m.dreamLoading {
-			notice = "Generating a Dream preview…"
-		}
-		switch m.prompt {
-		case searchPrompt:
-			hint = joinHints(m.shortcut("Enter", "Return to list"), m.shortcut("Esc", "Clear filter"))
-		case palettePrompt:
-			hint = joinHints(m.styles.Shortcut.Render("[↑] [↓]")+" "+m.styles.Muted.Render("Select"),
-				m.shortcut("Enter", "Run"), m.shortcut("Esc", "Close"))
-		}
-		footer = append(footer, hint)
 	}
 
 	var lines []string
@@ -115,7 +127,7 @@ func (m *model) View() tea.View {
 			lines = []string{m.insetLine(tabLine, 0, m.width)}
 		}
 		inputRow = len(lines) + 1 // First line inside the content panel.
-		lines = append(lines, m.framedBody(title, rows, tabs)...)
+		lines = append(lines, m.frame(title, m.bodyWidth(), rows)...)
 	case m.height < 8:
 		inputRow = 1
 		lines = append([]string{heading}, rows...)
@@ -127,20 +139,20 @@ func (m *model) View() tea.View {
 	}
 	if showStatus {
 		lines = append(lines, m.statusLine(notice))
-		footerHeight--
+		if modal {
+			footerHeight--
+		}
 	}
 	if m.framed() {
-		for _, line := range m.frame("Playback", m.bodyWidth(), []string{playback}) {
-			lines = append(lines, strings.Repeat(" ", m.sidebarWidth())+line)
-		}
+		lines = append(lines, m.frame("Playback", m.bodyWidth(), playback)...)
 	} else {
-		lines = append(lines, ansi.Truncate(playback, m.bodyWidth(), "…"))
+		lines = append(lines, playback...)
 	}
-	if !m.inlineInput() {
+	if modal {
 		inputRow = len(lines)
 	}
 	for _, line := range fitRows(footer, footerHeight) {
-		lines = append(lines, m.insetLine(line, m.sidebarWidth(), m.bodyWidth()))
+		lines = append(lines, m.insetLine(line, 0, m.bodyWidth()))
 	}
 	if len(lines) > m.height {
 		if (m.prompt != noPrompt || m.confirmation != nil) && m.height > 0 && inputRow >= m.height {
@@ -149,6 +161,18 @@ func (m *model) View() tea.View {
 		}
 		lines = lines[:m.height]
 	}
+	if m.framed() && m.showArtworkPanel() {
+		// Let details use the available height beside Playback.
+		rows := m.artworkRows()
+		height := min(len(lines), max(m.bodyHeight()+2, 1+len(rows)))
+		for i, art := range m.openPanel(sidePanelWidth, height, rows) {
+			lines[i] += strings.Repeat(" ", panelGap) + art
+		}
+	}
+	if m.sidebarWidth() > 0 {
+		nav := m.openPanel(sidePanelWidth, len(lines), m.sidebarRows(tabs))
+		lines = joinPanels(nav, lines)
+	}
 	for i, line := range lines {
 		lines[i] = ansi.Truncate(line, m.width, "…")
 	}
@@ -156,7 +180,10 @@ func (m *model) View() tea.View {
 	view.AltScreen = true
 	if m.prompt != noPrompt {
 		if cursor := m.input.Cursor(); cursor != nil {
-			if m.inlineInput() {
+			if m.paletteInSidebar() {
+				cursor.X = m.textInset() + min(cursor.X, m.innerWidth(sidePanelWidth)-1)
+				inputRow = sidebarCommandInputRow
+			} else if m.inlineInput() {
 				padding := m.filterPadding()
 				cursor.X = min(cursor.X+padding, m.innerWidth(m.bodyWidth())-padding-1)
 				if m.framed() {
@@ -170,6 +197,16 @@ func (m *model) View() tea.View {
 		}
 	}
 	return view
+}
+
+func (m *model) compactNavigation(tabs []string) string {
+	width := m.innerWidth(m.width)
+	key := m.styles.Shortcut.Render(keymap.Button(m.keys.Key(keymap.Commands)))
+	line := joinHints(strings.Join(tabs, "  "), key)
+	if ansi.StringWidth(line) <= width {
+		return line
+	}
+	return joinHints("Tab: "+tabNames[m.tab], key)
 }
 
 func (m *model) insetLine(line string, start, width int) string {
@@ -188,7 +225,7 @@ func (m *model) statusLine(notice string) string {
 	status := ansi.Truncate("MPD: "+label, width, "…")
 	space := width - ansi.StringWidth(status)
 	left := ansi.Truncate(clean(notice), max(0, space-2), "…")
-	return strings.Repeat(" ", m.sidebarWidth()) + m.styles.Muted.Render(left) +
+	return m.styles.Muted.Render(left) +
 		strings.Repeat(" ", space-ansi.StringWidth(left)) + style.Render(status)
 }
 
@@ -199,29 +236,38 @@ func (m *model) viewRows() []string {
 	}
 
 	width := m.innerWidth(m.bodyWidth())
-	browsing := m.prompt != palettePrompt
-	artistList := browsing && m.tab == artistsTab && len(m.tabs[artistsTab]) == 1
+	if m.paletteInMain() {
+		return m.paletteRows(width)
+	}
+	artistList := m.tab == artistsTab && len(m.tabs[artistsTab]) == 1
+	playlistList := m.onPlaylistList()
 	var lines []string
 	for i := p.top; i < min(len(p.rows), p.top+m.listHeight()); i++ {
 		row := p.rows[i]
 		selected := i == p.cursor
 		marker := " "
-		if browsing && m.tab == queueTab && m.status.State != "stop" && row.id == m.status.SongID {
+		if m.tab == queueTab && m.status.State != "stop" && row.id == m.status.SongID {
 			marker = "♫"
-		} else if browsing && m.tab == trayTab && m.trayMarks[m.tray[row.position].key] {
+		} else if m.tab == trayTab && m.trayMarks[m.tray[row.position].key] {
 			marker = "✓"
 		}
 		prefix := "  "
 		label := clean(row.label)
-		if browsing && !selected {
-			label = m.rowNameStyle(row).Render(label)
+		if !selected {
+			style := m.rowNameStyle(row)
+			if playlistList {
+				style = m.styles.SongName.Bold(true)
+			}
+			label = style.Render(label)
 		}
 		if selected {
 			prefix = "› "
 		}
 		title := prefix + marker + " " + label
 		var line string
-		if artistList {
+		if playlistList {
+			line = m.playlistOverviewRow(title, row.playlist, width, selected)
+		} else if artistList {
 			line = m.artistRow(title, row, width, selected)
 		} else {
 			line = m.mediaRow(title, row, width, selected)
@@ -266,13 +312,6 @@ func (m *model) artistRow(title string, row row, width int, selected bool) strin
 }
 
 func (m *model) mediaRow(title string, row row, width int, selected bool) string {
-	if m.prompt == palettePrompt {
-		if row.detail != "" {
-			title += "  ·  " + keymap.Button(clean(row.detail))
-		}
-		return ansi.Truncate(title, width, "…")
-	}
-
 	const timeWidth = 8
 	separateColumn := row.children != nil || m.tab == songsTab || m.canSwitchTrackColumn()
 	timed := len(row.tracks) > 0 || m.tab == queueTab

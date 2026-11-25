@@ -29,7 +29,8 @@ func (m *model) footerHeight() int {
 
 func (m *model) framed() bool {
 	minHeight := frameChromeHeight + (m.footerHeight() - 2) + 1
-	if m.showFilter() {
+	// Do not ask where the palette is drawn before choosing a layout.
+	if m.help == noHelp && (m.prompt == searchPrompt || m.prompt == palettePrompt || m.browsePage().filter != "") {
 		minHeight++ // Leave one row for results below the filter.
 	}
 	return m.styles.OutlinePanels && m.width >= 16 && m.height >= minHeight
@@ -53,6 +54,13 @@ func (m *model) innerWidth(width int) int {
 	return width - 2*m.textInset()
 }
 
+func (m *model) playbackGap() int {
+	if m.framed() && m.height >= 12 && m.prompt != playlistNamePrompt && m.confirmation == nil {
+		return 1
+	}
+	return 0
+}
+
 func (m *model) bodyHeight() int {
 	chrome := 6
 	switch {
@@ -65,7 +73,7 @@ func (m *model) bodyHeight() int {
 	case m.height < 8:
 		chrome = 4
 	}
-	return max(1, m.height-chrome-(m.footerHeight()-2))
+	return max(1, m.height-chrome-(m.footerHeight()-2)-m.playbackGap())
 }
 
 func (m *model) listHeight() int {
@@ -84,7 +92,9 @@ func (m *model) filterPadding() int {
 
 func (m *model) resizeInput() {
 	width := m.innerWidth(m.bodyWidth())
-	if m.inlineInput() {
+	if m.paletteInSidebar() {
+		width = m.innerWidth(sidePanelWidth)
+	} else if m.inlineInput() {
 		width = m.innerWidth(m.bodyWidth()) - 2*m.filterPadding()
 	}
 	m.input.SetWidth(max(1, min(48, width-ansi.StringWidth(m.input.Prompt)-1)))
@@ -115,20 +125,7 @@ func (m *model) frame(title string, width int, lines []string) []string {
 	return append(framed, border.Render("╰"+strings.Repeat("─", width-2)+"╯"))
 }
 
-func (m *model) framedBody(title string, rows, tabs []string) []string {
-	body := m.frame(title, m.bodyWidth(), rows)
-	if m.sidebarWidth() > 0 {
-		nav := m.openPanel(sidePanelWidth, len(body), m.navGroups(tabs))
-		body = joinPanels(nav, body)
-	}
-	if m.showArtworkPanel() {
-		art := m.openPanel(sidePanelWidth, len(body), m.artworkRows())
-		body = joinPanels(body, art)
-	}
-	return body
-}
-
-// Both side panels start one row below the top of the main panel.
+// Start each side panel one row below the top of the main panel.
 func (m *model) openPanel(width, height int, rows []string) []string {
 	lines := fitRows(append([]string{""}, rows...), height)
 	inset := m.textInset()

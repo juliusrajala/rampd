@@ -38,6 +38,7 @@ type row struct {
 	children                []row
 	id, position            int
 	duration                time.Duration
+	playlist                *playlistSummary
 }
 
 func newRow(key, label, detail string) row {
@@ -91,15 +92,22 @@ func (p *page) updateRows() {
 }
 
 func (m *model) page() *page {
-	if m.prompt == palettePrompt {
+	if m.paletteInMain() {
 		return &m.palettePage
 	}
+	return m.browsePage()
+}
+
+func (m *model) browsePage() *page {
 	stack := m.tabs[m.tab]
 	return &stack[len(stack)-1]
 }
 
 func (m *model) selected() (row, bool) {
-	p := m.page()
+	return m.page().selected()
+}
+
+func (p *page) selected() (row, bool) {
 	if p.cursor >= len(p.rows) {
 		return row{}, false
 	}
@@ -107,11 +115,11 @@ func (m *model) selected() (row, bool) {
 }
 
 func (m *model) onAlbumList() bool {
-	return m.tab == albumsTab && len(m.tabs[albumsTab]) == 1 && m.prompt != palettePrompt
+	return m.tab == albumsTab && len(m.tabs[albumsTab]) == 1
 }
 
 func (m *model) onMediaList() bool {
-	return m.onAlbumList() || m.tab == songsTab && m.prompt != palettePrompt
+	return m.onAlbumList() || m.tab == songsTab
 }
 
 func (m *model) mediaOrderLabel() string {

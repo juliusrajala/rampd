@@ -31,25 +31,36 @@ The player opens in **Songs**. Press `1`–`7` to switch to Songs, Albums, Artis
 | --- | --- |
 | `Tab` / `Shift+Tab` | Switch views |
 | `j` / `k` or `↓` / `↑` | Move the selection |
-| `h` / `l` or `←` / `→` | Go back or open the selection |
+| `←` / `Backspace` or `→` / `l` | Go back or open the selection |
 | `Enter` | Open a group or play the selected track |
 | `Space` | Append a library selection to the live queue |
 | `/` | Filter the current list as you type. `Enter` keeps the filter and `Esc` clears it |
-| `o` | Sort Songs or Albums by title or artist. In Tray Edit tracks mode, Queue, Dream, or an open playlist, switch the artist and album column without changing track order |
+| `o` | Sort Songs or Albums by title or artist. In Tray, Queue, Dream, or an open playlist, switch the artist and album column without changing track order |
 | `p`, `n`, `b` | Play or pause, skip forward, or skip back |
-| `[` / `]` | Seek backward or forward five seconds |
+| `i` | Focus the playing or paused entry in Queue. Clears the Queue filter only if it hides that entry |
+| `,` / `.` | Seek backward or forward five seconds |
 | `r` / `R` | Toggle random playback or repeat |
-| `:` | Open the command palette. Type to filter, use `↑` / `↓` to select, and press `Enter` to run the command |
-| `?` / `q` | Show key help or quit |
+| `:` | Focus the command palette. Type to filter, use `↑` / `↓` to select, and press `Enter` to run the command |
+| `?` / `h` / `q` | Show keybindings, open the guide, or quit |
+
+When space allows, the menu under navigation groups actions for the current view. **Help** explains how the Library, Queue, Tray, Dream, and Playlists work together. **Keybindings** separates General, Playback, and By view shortcuts. Use the arrow keys or Page Up and Page Down to scroll. The searchable palette uses that menu without replacing the list. In compact terminals, it opens in the main panel instead. View switches stay in navigation. Playback shortcuts stay in the Playback box. The palette does not repeat them.
 
 Playing a track from the library or a stored playlist appends it before playback. It does not replace the queue. When MPD notifications are available, the player picks up changes from other clients automatically. Otherwise it polls for playback and queue changes. Use `Ctrl+R` to refresh the library or playlists manually.
 
+### Song dates and play counts
+
+The details panel shows **Last played** and play counts for the current and previous UTC years. It also shows **Added** and **Modified** dates when MPD supplies them. Added is the date MPD added the track to its library. Modified is the date the audio file last changed.
+
+While rämpd is open, it records an observed play after 30 seconds or half the track, whichever comes first. Seeking does not add listening time. A pause does not start a new play. Plays that rämpd cannot distinguish, such as a seamless repeat of one queue entry, may count only once. Run one rämpd instance per MPD server to avoid counting the same play twice.
+
+MPD must have a `sticker_file` and support `sticker inc`. rämpd writes the qualification time to `rampd.last_played` and increments `rampd.playcount.YYYY` for that UTC year. Stickers do not change the audio file. If the write fails, playback continues and rämpd shows a notice.
+
 ### Tray: plan a mix without changing playback
 
-Press `t` while browsing to collect the highlighted artist, album, or track. This skips tracks already in the Tray. Press `4` to open the Tray. Use `Ctrl+T` to switch modes. Only the active mode’s Tray actions work. Navigation, filtering, and playback controls work in both modes.
+Press `t` while browsing to collect the highlighted artist, album, or track. This skips tracks already in the Tray. Press `4` to open the Tray. Track edits and actions for the whole Tray are available together.
 
 - **Edit tracks:** Use `J` / `K` to move tracks down or up and `x` to remove them. Press `v` to mark tracks for a group edit. With no marks, edits apply to the highlighted track. Marks survive filtering, and edits include hidden marked tracks. Press `Esc` to clear a filter, then press it again to clear marks.
-- **Whole Tray:** Press `C` to copy the live queue, `Space` to append the Tray to it, `w` to save a playlist, or `D` to preview a Dream. Press `P` to replace the queue after confirmation. If the current track is retained, playback keeps its position. Otherwise it stops without starting another track. Use the palette (`:`) for **Shuffle Tray**. These actions use the full Tray, not just visible or marked tracks.
+- **Whole Tray:** Press `C` to copy the live queue, `Space` to append the Tray to it, `w` to save a playlist, or `D` to preview a Dream. Press `P` to replace the queue after confirmation. If the current track is retained, playback keeps its position. Otherwise it stops without starting another track. Press `s` to shuffle the Tray without changing the live queue. Press `d` or choose **Remove duplicates** in the command palette to keep the first copy of each track in order. These actions use the full Tray, not just visible or marked tracks.
 
 You can also copy the live queue with `C` from **Queue**. Copying preserves order and repeats and asks before replacing a nonempty Tray. The Tray saves automatically to `$XDG_STATE_HOME/rampd/tray.json`, or `~/.local/state/rampd/tray.json` by default. Marks do not persist. Restoring the Tray does not change playback.
 
@@ -57,11 +68,13 @@ You can also copy the live queue with `C` from **Queue**. Copying preserves orde
 
 In **Queue**, `J` / `K` moves a track, `x` removes it, `s` shuffles the queue, and `X` clears it after confirmation. Press `w` to save the queue as a new MPD playlist.
 
+The **Playlists** list shows each playlist's top three genres, track count, and total length when space allows. The selection preview lists the artists in the highlighted playlist. When there is room, it also shows a synthwave cover generated from the playlist name. Renaming the playlist changes its cover.
+
 In the **Playlists** list, `c` creates a playlist, `e` renames it, and `X` asks before deleting it. Open a playlist to reorder or remove tracks, or use `a` to append the full playlist to the queue. Press `A` on an eligible selection to add it to an existing playlist by name.
 
 ### Dream: preview a listening session
 
-Press `7`, then `g` for a preview from your whole library. Or press `D` in **Whole Tray** mode for other tracks that match the artist, album artist, or genre tags in the Tray. Dream runs locally, skips duplicate tracks, and avoids consecutive tracks by the same artist when possible. The default target is 25 tracks (`-dream-count` changes it).
+Press `7`, then `g` for a preview from your whole library. Or press `D` in the **Tray** for other tracks that match the artist, album artist, or genre tags in the Tray. Dream runs locally, skips duplicate tracks, and avoids consecutive tracks by the same artist when possible. The default target is 25 tracks (`-dream-count` changes it).
 
 Generating a preview does not change the Tray or queue. From Dream, `Space` appends the preview, `Enter` appends and plays it, `P` replaces the queue and starts playback after confirmation, and `w` saves it as a new playlist.
 

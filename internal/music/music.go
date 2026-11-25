@@ -7,6 +7,13 @@ type Track struct {
 	URI, Title, Artist, AlbumArtist, Album, Genre string
 	Disc, Number                                  int
 	Duration                                      time.Duration // Zero if unknown.
+	Added, Modified                               time.Time     // Zero if unknown.
+}
+
+// PlayHistory holds the statistics recorded by rämpd for one track.
+type PlayHistory struct {
+	LastPlayed time.Time
+	Yearly     map[int]uint64
 }
 
 type Entry struct {

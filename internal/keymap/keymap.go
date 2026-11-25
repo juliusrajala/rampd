@@ -12,6 +12,7 @@ type Action string
 const (
 	Quit        Action = "quit"
 	Help        Action = "help"
+	Guide       Action = "guide"
 	Artists     Action = "artists"
 	Albums      Action = "albums"
 	Songs       Action = "songs"
@@ -41,6 +42,7 @@ const (
 	AppendAll   Action = "append_playlist"
 	Save        Action = "save_playlist"
 	PlayPause   Action = "play_pause"
+	FocusSong   Action = "focus_song"
 	Next        Action = "next"
 	Previous    Action = "previous"
 	SeekBack    Action = "seek_back"
@@ -51,28 +53,27 @@ const (
 	MoveDown    Action = "move_down"
 	MoveUp      Action = "move_up"
 	Shuffle     Action = "shuffle"
-	ShuffleTray Action = "shuffle_tray"
 	SortAlbums  Action = "sort_albums"
 	Clear       Action = "clear_or_delete"
 	Replace     Action = "replace_queue"
 	Commands    Action = "commands"
 	AddTray     Action = "add_to_tray"
 	MarkTray    Action = "mark_tray"
-	TrayHints   Action = "tray_hints"
+	DedupeTray  Action = "dedupe_tray"
 	CopyTray    Action = "copy_queue_to_tray"
 	SeedDream   Action = "dream_from_tray"
 )
 
 var defaults = map[Action][]string{
-	Quit: {"q"}, Help: {"?"}, Songs: {"1"}, Albums: {"2"}, Artists: {"3"}, Tray: {"4"}, Queue: {"5"}, Playlists: {"6"}, Dream: {"7"},
+	Quit: {"q"}, Help: {"?"}, Guide: {"h"}, Songs: {"1"}, Albums: {"2"}, Artists: {"3"}, Tray: {"4"}, Queue: {"5"}, Playlists: {"6"}, Dream: {"7"},
 	NextTab: {"tab"}, PreviousTab: {"shift+tab"}, Down: {"j", "down"}, Up: {"k", "up"},
 	PageDown: {"pgdown"}, PageUp: {"pgup"}, First: {"g"}, Home: {"home"}, Last: {"G", "end"},
-	Back: {"h", "left", "backspace"}, Cancel: {"esc"}, Forward: {"l", "right"}, Open: {"enter"},
+	Back: {"left", "backspace"}, Cancel: {"esc"}, Forward: {"l", "right"}, Open: {"enter"},
 	Append: {"space"}, Filter: {"/"}, Refresh: {"ctrl+r"}, NewPlaylist: {"c"}, Rename: {"e"},
-	AddPlaylist: {"A"}, AppendAll: {"a"}, Save: {"w"}, PlayPause: {"p"}, Next: {"n"}, Previous: {"b"},
-	SeekBack: {"["}, SeekForward: {"]"}, Random: {"r"}, Repeat: {"R"}, Remove: {"x"}, MoveDown: {"J"},
-	MoveUp: {"K"}, Shuffle: {"s"}, SortAlbums: {"o"}, ShuffleTray: nil, Clear: {"X"}, Replace: {"P"}, Commands: {":"},
-	AddTray: {"t"}, MarkTray: {"v"}, TrayHints: {"ctrl+t"}, CopyTray: {"C"}, SeedDream: {"D"},
+	AddPlaylist: {"A"}, AppendAll: {"a"}, Save: {"w"}, PlayPause: {"p"}, FocusSong: {"i"}, Next: {"n"}, Previous: {"b"},
+	SeekBack: {","}, SeekForward: {"."}, Random: {"r"}, Repeat: {"R"}, Remove: {"x"}, MoveDown: {"J"},
+	MoveUp: {"K"}, Shuffle: {"s"}, SortAlbums: {"o"}, Clear: {"X"}, Replace: {"P"}, Commands: {":"},
+	AddTray: {"t"}, MarkTray: {"v"}, DedupeTray: {"d"}, CopyTray: {"C"}, SeedDream: {"D"},
 }
 
 type Bindings struct {

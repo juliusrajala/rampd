@@ -22,18 +22,22 @@ func (m *model) focusFilter() tea.Cmd {
 func (m *model) updateInput(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
-	if m.inlineInput() {
-		m.page().setFilter(strings.TrimSpace(m.input.Value()))
+	query := strings.TrimSpace(m.input.Value())
+	switch m.prompt {
+	case palettePrompt:
+		m.palettePage.setFilter(query)
+	case searchPrompt:
+		m.browsePage().setFilter(query)
 	}
 	return cmd
 }
 
 func (m *model) inlineInput() bool {
-	return m.prompt == searchPrompt || m.prompt == palettePrompt
+	return m.prompt == searchPrompt || m.paletteInMain()
 }
 
 func (m *model) showFilter() bool {
-	return !m.showHelp && (m.inlineInput() || m.page().filter != "")
+	return m.help == noHelp && (m.inlineInput() || m.page().filter != "")
 }
 
 func (m *model) filterLine() string {

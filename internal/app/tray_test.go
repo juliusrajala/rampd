@@ -90,11 +90,6 @@ func TestTrayReplacementKeepsTheOriginalPlayingOccurrence(t *testing.T) {
 	m.addTrayEntry(m.queue[0])
 	m.updateTrayRows()
 	m.key(keyRune('P'))
-	if m.confirmation != nil {
-		t.Fatal("replace should be inactive in Edit tracks mode")
-	}
-	m.key(trayModeKey())
-	m.key(keyRune('P'))
 	if m.confirmation == nil || strings.Contains(m.confirmation.message, "stop") {
 		t.Fatal("retained playing entry should not stop")
 	}
@@ -109,12 +104,6 @@ func TestTrayReplacementKeepsTheOriginalPlayingOccurrence(t *testing.T) {
 	m.busy = false
 	m.page().move(1)
 	m.key(keyRune('x'))
-	if len(m.tray) != 2 {
-		t.Fatal("remove should be inactive in Whole Tray mode")
-	}
-	m.key(trayModeKey())
-	m.key(keyRune('x'))
-	m.key(trayModeKey())
 	m.key(keyRune('P'))
 	if m.confirmation == nil || !strings.Contains(m.confirmation.message, "stop") {
 		t.Fatal("removing the playing occurrence should warn even when another repeat remains")
@@ -129,7 +118,6 @@ func TestAppendUsesFullTrayEvenWhenFiltered(t *testing.T) {
 	m.addTrayEntry(music.Entry{ID: -1, Track: fixtureTracks[1]})
 	m.updateTrayRows()
 	m.page().setFilter("first")
-	m.key(trayModeKey())
 	cmd := m.key(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
 	if cmd == nil {
 		t.Fatal("no append command")
@@ -201,7 +189,42 @@ func TestRestoredTrayAutosavesTrackEditsOnly(t *testing.T) {
 	}
 }
 
-func TestShuffleTrayFromPaletteSavesAllEntries(t *testing.T) {
+func TestRemoveTrayDuplicatesFromPalette(t *testing.T) {
+	server := &fakeBackend{}
+	first, other := fixtureTracks[0], fixtureTracks[1]
+	var saved [][]music.Track
+	m := New(context.Background(), server, Options{
+		SaveTray: func(tracks []music.Track) error {
+			saved = append(saved, tracks)
+			return nil
+		},
+	}).(*model)
+	for i, track := range []music.Track{first, other, first, fixtureTracks[2], other} {
+		m.addTrayEntry(music.Entry{ID: i + 10, Track: track})
+	}
+	m.updateTrayRows()
+	m.tab = trayTab
+	keep, drop := m.tray[0].key, m.tray[2].key
+	m.trayMarks = map[int]bool{keep: true, drop: true}
+	m.page().setFilter("First")
+	m.Update(keyRune(':'))
+	m.Update(tea.PasteMsg{Content: "remove duplicates"})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	want := []music.Track{first, other, fixtureTracks[2]}
+	if len(saved) != 1 || !slices.Equal(saved[0], want) || !slices.Equal(m.trayTracks(), want) ||
+		m.tray[0].ID != 10 || m.tray[1].ID != 11 || m.tray[2].ID != 13 {
+		t.Fatalf("expected to save only first occurrences in order: %v", saved)
+	}
+	if m.page().filter != "First" || len(m.trayMarks) != 1 || !m.trayMarks[keep] || len(server.actions) != 0 {
+		t.Fatal("removing duplicates changed the filter, surviving marks, or live queue")
+	}
+	m.Update(keyRune('d'))
+	if len(saved) != 1 || m.notice != "No duplicates in the Tray." {
+		t.Fatal("the shortcut should report no duplicates without saving again")
+	}
+}
+
+func TestShuffleKeyUsesCurrentList(t *testing.T) {
 	server := &fakeBackend{}
 	initial := []music.Track{fixtureTracks[0], fixtureTracks[1], fixtureTracks[0], fixtureTracks[2]}
 	var saved []music.Track
@@ -217,19 +240,6 @@ func TestShuffleTrayFromPaletteSavesAllEntries(t *testing.T) {
 	m.key(keyRune('v'))
 	m.page().setFilter("First")
 	m.key(keyRune('s'))
-	if saved != nil {
-		t.Fatal("Tray shuffle must not use the queue shuffle key by default")
-	}
-	m.key(keyRune(':'))
-	m.Update(tea.PasteMsg{Content: "shuffle tray"})
-	if len(m.page().rows) != 0 {
-		t.Fatal("Edit tracks palette offered a whole-Tray action")
-	}
-	m.key(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m.key(trayModeKey())
-	m.key(keyRune(':'))
-	m.Update(tea.PasteMsg{Content: "shuffle tray"})
-	m.key(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if m.notice != "Shuffled Tray." || !slices.Equal(saved, m.trayTracks()) || len(saved) != len(initial) {
 		t.Fatalf("shuffle did not save the complete Tray: %v", saved)
 	}
@@ -241,53 +251,46 @@ func TestShuffleTrayFromPaletteSavesAllEntries(t *testing.T) {
 		!m.trayMarks[marked] || m.page().filter != "First" || len(server.actions) != 0 {
 		t.Fatal("shuffle must preserve repeats, marks, filter, and live queue")
 	}
+	before := m.trayTracks()
+	m.tab, m.connected, m.busy = queueTab, true, false
+	m.queue = []music.Entry{{ID: 1, Track: initial[0]}, {ID: 2, Track: initial[1]}}
+	cmd := m.key(keyRune('s'))
+	if cmd == nil {
+		t.Fatal("Queue did not handle the shared shuffle key")
+	}
+	cmd()
+	if !slices.Equal(before, m.trayTracks()) || len(server.actions) != 1 ||
+		server.actions[0].Operation != music.Shuffle {
+		t.Fatal("Queue shuffle must not change the Tray")
+	}
 }
 
-func trayModeKey() tea.KeyPressMsg {
-	return tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
-}
-
-func TestTrayFooterFlipsActionScopes(t *testing.T) {
+func TestTrayMenuShowsBothActionGroups(t *testing.T) {
 	m := New(context.Background(), &fakeBackend{}, Options{InitialTray: fixtureTracks}).(*model)
 	m.tab = trayTab
-	m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 36})
 	m.key(keyRune('v'))
 	m.page().setFilter("First")
 
 	m.notice = "Copied queue to Tray: 3 tracks."
 	view := ansi.Strip(m.View().Content)
 	lines := strings.Split(view, "\n")
-	notice := strings.Index(view, "\n"+strings.Repeat(" ", m.sidebarWidth())+"Copied queue to Tray: 3 tracks.")
+	notice := strings.Index(view, "Copied queue to Tray: 3 tracks.")
 	playback := strings.Index(view, "╭ Playback")
 	if notice < 0 || playback < notice || strings.Count(view, "Copied queue") != 1 {
 		t.Fatalf("notice should be inset above Playback: %q", view)
 	}
-	edit := lines[len(lines)-1]
-	left := strings.Repeat(" ", m.sidebarWidth()+m.textInset())
-	if !strings.HasPrefix(edit, left+"[ctrl+t] Mode  1 marked · 1 hidden") ||
-		strings.Contains(view, "Whole Tray") {
-		t.Fatalf("wrong edit hints: %q", edit)
-	}
-	m.Update(trayModeKey())
-	view = ansi.Strip(m.View().Content)
-	lines = strings.Split(view, "\n")
-	whole := lines[len(lines)-1]
-	if !strings.HasPrefix(whole, left+"[ctrl+t] Mode  Whole Tray") ||
-		strings.Contains(view, "[x] Remove") || !strings.HasPrefix(strings.TrimSpace(lines[len(lines)-2]), "╰") {
-		t.Fatalf("expected one row of whole-Tray hints: %q", whole)
-	}
-	if len(m.trayMarks) != 1 || m.page().filter != "First" || !slices.Equal(m.trayTracks(), fixtureTracks) {
-		t.Fatal("flipping hints changed the Tray, marks, or filter")
+	if !strings.Contains(view, "Tray · 1 marked · 1 hidden") || !strings.Contains(view, "[x]") ||
+		!strings.Contains(view, "Shuffle Tray") || !strings.Contains(view, "Copy queue") ||
+		strings.Contains(view, "[ctrl+t]") ||
+		!strings.HasPrefix(ansi.Cut(lines[len(lines)-1], m.sidebarWidth(), m.width), "╰") {
+		t.Fatalf("expected both command groups and no mode switch or footer: %q", view)
 	}
 
 	m.Update(tea.WindowSizeMsg{Width: 50, Height: 18})
 	lines = strings.Split(ansi.Strip(m.View().Content), "\n")
-	if !strings.Contains(lines[len(lines)-1], "[:] Commands") || !strings.Contains(lines[len(lines)-1], "[ctrl+t] Mode") {
-		t.Fatal("compact footer should keep the flip and palette hints")
-	}
-	m.Update(trayModeKey())
-	if m.trayWholeMode {
-		t.Fatal("flipping should return to edit hints")
+	if !strings.Contains(lines[0], "[:]") || strings.Contains(lines[0], "[ctrl+t]") {
+		t.Fatal("compact navigation should advertise the palette, not Tray actions")
 	}
 }
 

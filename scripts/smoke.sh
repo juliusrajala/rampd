@@ -25,9 +25,9 @@ fi
 touch "$dir/rampd.toml"
 
 mkdir "$dir/music" "$dir/playlists"
-ffmpeg -v error -f lavfi -i sine=frequency=440:duration=30 -metadata 'artist=Pizza Artist' -metadata 'album=First Album' -metadata 'title=Smoke Track' "$dir/music/smoke.flac"
-ffmpeg -v error -f lavfi -i sine=frequency=880:duration=30 -metadata 'artist=Pizza Artist' -metadata 'album=First Album' -metadata 'title=Zeta Track' "$dir/music/zeta.flac"
-ffmpeg -v error -f lavfi -i sine=frequency=660:duration=30 -metadata 'artist=Pizza Artist' -metadata 'album=First Album' -metadata 'title=ZZ Related' "$dir/music/zz-related.flac"
+ffmpeg -v error -f lavfi -i sine=frequency=440:duration=30 -metadata 'artist=Pizza Artist' -metadata 'album=First Album' -metadata 'title=Smoke Track' -metadata 'genre=Rock' "$dir/music/smoke.flac"
+ffmpeg -v error -f lavfi -i sine=frequency=880:duration=30 -metadata 'artist=Pizza Artist' -metadata 'album=First Album' -metadata 'title=Zeta Track' -metadata 'genre=Jazz' "$dir/music/zeta.flac"
+ffmpeg -v error -f lavfi -i sine=frequency=660:duration=30 -metadata 'artist=Pizza Artist' -metadata 'album=First Album' -metadata 'title=ZZ Related' -metadata 'genre=Pop' "$dir/music/zz-related.flac"
 ffmpeg -v error -f lavfi -i color=red:s=96x64 -frames:v 1 -threads 1 "$dir/music/cover.png"
 printf 'music_directory "%s/music"\nplaylist_directory "%s/playlists"\ndb_file "%s/db"\nbind_to_address "%s/mpd"\naudio_output {\n type "null"\n name "Test"\n}\n' "$dir" "$dir" "$dir" "$dir" > "$dir/mpd.conf"
 start_app() {
@@ -81,7 +81,13 @@ with socket.socket(socket.AF_UNIX) as conn:
 PY
 expect_text 'MPD: online'
 expect_text 'Pizza Artist'
-tm capture-pane -pt app | grep -B1 '^ *╭ Playback' | grep -Eq 'MPD: online *$'
+tm send-keys -t app h
+expect_text 'Browse your MPD music library'
+expect_text 'Help ·'
+tm send-keys -t app Escape
+expect_absent 'Help ·'
+expect_text 'Modified'
+tm capture-pane -pt app | grep -B1 '╭ Playback' | grep -Eq 'MPD: online( *$| {2,})'
 tm send-keys -t app 3 Enter Enter Space j Space 5
 expect_text '›   Smoke Track'
 expect_text 'Zeta Track'
@@ -90,16 +96,26 @@ tm send-keys -t app o
 expect_text 'Queue · Album'
 tm send-keys -t app o Enter
 expect_text 'Playing · Smoke Track'
-tm capture-pane -pt app | grep -E '^ *│ Playing · Smoke Track.*▄[█ ]{6,}▀ │$' >/dev/null
+tm capture-pane -pt app | grep -E '│ Playing · Smoke Track.*▄[█ ]{6,}▀ │' >/dev/null
 expect_text '│    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀'
 tm send-keys -t app j
 expect_text '│    Zeta Track'
 expect_text 'Playing · Smoke Track'
 tm send-keys -t app :
-expect_text '╭ Commands'
 tm send-keys -lt app pause
-expect_text 'Play or pause'
-tm send-keys -t app Enter
+expect_text '  : pause'
+expect_text 'No matching commands.'
+expect_text 'Queue · Artist'
+tm send-keys -t app Escape
+expect_text '[,] −5s'
+expect_text '[.] +5s'
+tm send-keys -t app p
+expect_text 'Paused · Smoke Track'
+tm send-keys -t app 1
+expect_text '▸ [1] Songs'
+tm send-keys -t app i
+expect_text '▸ [5] Queue'
+expect_text '› ♫ Smoke Track'
 expect_text 'Paused · Smoke Track'
 tm send-keys -t app /
 tm send-keys -lt app 'pizza smoke'
@@ -121,10 +137,10 @@ tm send-keys -t app 5 C
 expect_text 'Replace the Tray with a copy'
 tm send-keys -t app y
 expect_text 'Copied queue to Tray: 2 tracks.'
-expect_text 'Edit tracks'
-tm send-keys -t app J C-t
-expect_text 'Whole Tray'
-expect_absent 'Edit tracks'
+tm send-keys -t app s
+expect_text 'Shuffled Tray.'
+tm send-keys -t app Home
+expect_text 'Mark'
 tm send-keys -t app P
 expect_text 'Replace the live queue with the Tray?'
 tm send-keys -t app y
@@ -150,10 +166,14 @@ expect_text 'Saved playlist "My Dream"'
 tm send-keys -t app 6
 expect_text 'My Dream'
 expect_text 'Tray Mix'
+expect_text 'Jazz, Pop, Rock'
+expect_text '3 tracks'
+expect_text '1:30'
+expect_text 'Pizza Artist'
 tm send-keys -t app Home Enter
 expect_text 'Playlists / My Dream'
 expect_text 'Smoke Track'
-tm send-keys -t app h c
+tm send-keys -t app Left c
 expect_text 'Create:'
 tm send-keys -lt app 'Road Mix'
 tm send-keys -t app Enter
@@ -193,8 +213,8 @@ done
 start_app
 expect_text 'MPD: online'
 tm send-keys -t app 4
-expect_text 'Edit tracks'
-expect_text '›   Zeta Track'
+expect_text 'Mark'
+expect_text 'Zeta Track'
 expect_text 'Smoke Track'
 tm send-keys -t app 5
 expect_text 'Queue is empty.'

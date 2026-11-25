@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -61,8 +62,8 @@ func TestDisposableMPD(t *testing.T) {
 	socket := filepath.Join(dir, "socket")
 	cfg := fmt.Sprintf(
 		"music_directory %q\nplaylist_directory %q\ndb_file %q\nbind_to_address %q\n"+
-			"auto_update \"no\"\naudio_output {\n type \"null\"\n name \"Test output\"\n}\n",
-		musicDir, playlistDir, filepath.Join(dir, "db"), socket,
+			"sticker_file %q\nauto_update \"no\"\naudio_output {\n type \"null\"\n name \"Test output\"\n}\n",
+		musicDir, playlistDir, filepath.Join(dir, "db"), socket, filepath.Join(dir, "stickers.db"),
 	)
 	conf := filepath.Join(dir, "mpd.conf")
 	if err := os.WriteFile(conf, []byte(cfg), 0600); err != nil {
@@ -136,6 +137,49 @@ func TestDisposableMPD(t *testing.T) {
 	})
 	if tracks[0].Artist != "Test artist" || tracks[0].Album != "Test album" {
 		t.Fatalf("unexpected fixture metadata: %+v", tracks)
+	}
+
+	if tracks[0].Modified.IsZero() {
+		t.Fatal("library track is missing its file modification time")
+	}
+	path := filepath.Join(musicDir, tracks[0].URI)
+	beforeSticker, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tracks[0].Modified.Equal(beforeSticker.ModTime().Truncate(time.Second)) {
+		t.Fatalf("MPD Last-Modified does not match the file: %s", tracks[0].Modified)
+	}
+	plays := []time.Time{
+		time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC),
+		time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		time.Date(2025, 12, 31, 20, 0, 2, 0, time.FixedZone("UTC-4", -4*60*60)),
+	}
+	for _, at := range plays {
+		if err := client.RecordPlay(ctx, tracks[0].URI, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, value := range map[string]string{
+		"rampd.last_played": "2026-01-01T00:00:02Z", "rampd.playcount.2025": "1", "rampd.playcount.2026": "2",
+	} {
+		fields, err := w.query("sticker", "get", "song", tracks[0].URI, name)
+		if err != nil || get(fields, "sticker") != name+"="+value {
+			t.Fatalf("wrong sticker %s: %v (%v)", name, fields, err)
+		}
+	}
+	history, err := client.PlayHistory(ctx, tracks[0].URI)
+	if err != nil || !history.LastPlayed.Equal(plays[2]) || len(history.Yearly) != 2 ||
+		history.Yearly[2025] != 1 || history.Yearly[2026] != 2 {
+		t.Fatalf("wrong play history: %+v (%v)", history, err)
+	}
+	empty, err := client.PlayHistory(ctx, tracks[1].URI)
+	if err != nil || !empty.LastPlayed.IsZero() || len(empty.Yearly) != 0 {
+		t.Fatalf("a track without history should return empty statistics: %+v (%v)", empty, err)
+	}
+	afterSticker, err := os.Stat(path)
+	if err != nil || !afterSticker.ModTime().Equal(beforeSticker.ModTime()) {
+		t.Fatalf("sticker write changed the file modification time or the file could not be read: %v", err)
 	}
 
 	if tracks[0].Duration != 30*time.Second {
@@ -292,6 +336,19 @@ func TestDisposableMPD(t *testing.T) {
 		Tracks:      []music.Track{tracks[1], tracks[0], tracks[1]},
 		Replacement: &music.QueueReplacement{Version: s.QueueVersion, Before: s.Queue, CurrentID: id, KeepAt: 1},
 	}
+	badReplace := replace
+	badReplace.Tracks = []music.Track{tracks[1], tracks[0], missing}
+	beforeFailure := snapshot("")
+	if err := client.Apply(ctx, badReplace); err == nil {
+		t.Fatal("expected MPD to reject a missing Tray track")
+	}
+	afterFailure := snapshot("")
+	if !slices.Equal(afterFailure.Queue, beforeFailure.Queue) ||
+		afterFailure.SongID != id || afterFailure.State != beforeFailure.State {
+		t.Fatalf("failed Tray replacement changed the queue or playback: %+v", afterFailure)
+	}
+	s = afterFailure
+	replace.Replacement.Version = s.QueueVersion
 	act(replace)
 	s = snapshot("")
 	if len(s.Queue) != 3 || s.Queue[1].ID != id || s.SongID != id || s.State != "play" || s.Elapsed < 4*time.Second ||

@@ -33,7 +33,7 @@ func (m *model) emptyMessage() (string, []string) {
 		return title, nonemptyHints(lines)
 	}
 	switch {
-	case m.prompt == palettePrompt:
+	case m.paletteInMain():
 		return "No matching commands.", nil
 	case p.filter != "":
 		if m.prompt == searchPrompt {
@@ -41,11 +41,7 @@ func (m *model) emptyMessage() (string, []string) {
 		}
 		return directions("No matching entries.", hint(keymap.Cancel, "Clear filter"))
 	case m.tab == trayTab:
-		copyHint := hint(keymap.TrayHints, "Switch to Whole Tray to copy")
-		if m.trayWholeMode {
-			copyHint = hint(keymap.CopyTray, "Copy live queue")
-		}
-		return directions("Tray is empty.", hint(keymap.AddTray, "Collect tracks while browsing"), copyHint)
+		return directions("Tray is empty.", hint(keymap.AddTray, "Collect tracks while browsing"))
 	case m.tab == queueTab:
 		return directions("Queue is empty.", hint(keymap.Append, "Append tracks while browsing"))
 	case m.tab == dreamTab:

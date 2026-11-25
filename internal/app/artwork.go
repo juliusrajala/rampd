@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -25,6 +26,9 @@ type artworkMsg struct {
 
 func (m *model) showArtworkPanel() bool {
 	needed := artRowCount + 2 // Title and at least one metadata row.
+	if m.onPlaylistList() {
+		needed = 3 // Playlist name and artist list, without cover art.
+	}
 	if !m.framed() {
 		needed++ // The unframed panel uses one line for top padding.
 	}
@@ -34,7 +38,7 @@ func (m *model) showArtworkPanel() bool {
 		// Keep enough room for the main frame between the side panels.
 		minWidth = minListWidth + sidePanelSpan
 	}
-	return m.artworkEnabled && width >= minWidth && m.bodyHeight() >= needed && !m.showHelp && m.prompt != palettePrompt
+	return m.artworkEnabled && width >= minWidth && m.bodyHeight() >= needed && m.help == noHelp && !m.paletteInMain()
 }
 
 func (r row) artworkURI() string {
@@ -97,12 +101,20 @@ func (m *model) storeArtwork(msg artworkMsg) {
 
 func (m *model) artworkRows() []string {
 	selected, ok := m.selected()
+	if m.onPlaylistList() && ok {
+		return m.playlistPreview(selected)
+	}
 	var details []string
 	if ok {
 		details = append(details, m.rowNameStyle(selected).Render(clean(selected.label)))
-		for _, field := range m.selectionFields(selected) {
+		fields := m.selectionFields(selected)
+		labelWidth := 8
+		for _, field := range fields {
+			labelWidth = max(labelWidth, len(field.label))
+		}
+		for _, field := range fields {
 			if field.value != "" {
-				key := m.styles.Shortcut.Width(6).Render(field.label)
+				key := m.styles.Shortcut.Width(labelWidth).Render(field.label)
 				value := m.styles.Muted
 				switch field.label {
 				case "Artist":
@@ -127,7 +139,15 @@ func (m *model) artworkRows() []string {
 		height += 2 // Use the height of the main frame, not just its contents.
 	}
 	panel := m.selectionCover(selected.artworkURI())
-	if height > artRowCount+min(4, len(details)) {
+	gap := height > artRowCount+min(4, len(details))
+	if uri := m.songStats.result.uri; uri != "" && selected.artworkURI() == uri {
+		// Prefer the dates and counts to padding when the preview is short.
+		if m.framed() {
+			height = m.height - 1
+		}
+		gap = gap && height > artRowCount+len(details)
+	}
+	if gap {
 		panel = append(panel, "")
 	}
 	return append(panel, details...)
@@ -160,8 +180,15 @@ func (m *model) selectionFields(item row) []detailField {
 		{"Artist", trackArtist(t)},
 		{"Album", t.Album},
 		{"Length", durationLabel(t.Duration)},
-		{"Genre", t.Genre},
 	}
+	if !t.Added.IsZero() {
+		fields = append(fields, detailField{"Added", t.Added.UTC().Format("2006-01-02")})
+	}
+	if !t.Modified.IsZero() {
+		fields = append(fields, detailField{"Modified", t.Modified.UTC().Format("2006-01-02")})
+	}
+	fields = append(fields, m.songStatsFields(t.URI, time.Now())...)
+	fields = append(fields, detailField{"Genre", t.Genre})
 	if t.Number > 0 {
 		fields = append(fields, detailField{"Track", strconv.Itoa(t.Number)})
 	}

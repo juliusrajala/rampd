@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,6 +45,25 @@ func TestSquareCoverSoftensCornersWithoutChangingWidth(t *testing.T) {
 		!strings.Contains(bottom, "\x1b[38;2;255;255;255;49m▀") ||
 		strings.Contains(lines[1], ";49m") {
 		t.Fatal("only the cover corners should expose the terminal background")
+	}
+}
+
+func TestSynthwaveCoverUsesPlaylistName(t *testing.T) {
+	const rows = 12
+	one := SynthwaveCover("Midnight Drive", rows)
+	if !slices.Equal(one, SynthwaveCover("Midnight Drive", rows)) {
+		t.Fatal("the same playlist name should produce the same cover")
+	}
+	if slices.Equal(one, SynthwaveCover("Midnight Drive, Vol. 2", rows)) {
+		t.Fatal("changing the playlist name should change the cover")
+	}
+	if len(one) != rows {
+		t.Fatalf("expected %d cover rows, got %d", rows, len(one))
+	}
+	for _, line := range one {
+		if ansi.StringWidth(line) != 2*rows {
+			t.Fatalf("cover does not fit the preview: %q", line)
+		}
 	}
 }
 

@@ -26,19 +26,13 @@ func (m *model) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	key := m.keys.Action(raw)
-	if m.showHelp {
-		m.showHelp = false
-		if key != keymap.Quit {
-			return nil
-		}
+	if m.help != noHelp {
+		return m.helpKey(raw, key)
 	}
 	return m.dispatch(key)
 }
 
 func (m *model) dispatch(key keymap.Action) tea.Cmd {
-	if !m.trayActionAvailable(key) {
-		return nil
-	}
 	for tab, action := range tabActions {
 		if key == action {
 			return m.selectTab(tab)
@@ -48,7 +42,9 @@ func (m *model) dispatch(key keymap.Action) tea.Cmd {
 	case keymap.Quit:
 		return tea.Quit
 	case keymap.Help:
-		m.showHelp = true
+		m.help, m.helpTop = keysHelp, 0
+	case keymap.Guide:
+		m.help, m.helpTop = guideHelp, 0
 	case keymap.NextTab:
 		return m.selectTab((m.tab + 1) % len(tabNames))
 	case keymap.PreviousTab:
@@ -75,7 +71,7 @@ func (m *model) dispatch(key keymap.Action) tea.Cmd {
 			m.page().setFilter("")
 			return nil
 		}
-		if key == keymap.Cancel && m.tab == trayTab && !m.trayWholeMode && len(m.trayMarks) > 0 {
+		if key == keymap.Cancel && m.tab == trayTab && len(m.trayMarks) > 0 {
 			clear(m.trayMarks)
 			return nil
 		}
@@ -121,10 +117,6 @@ func (m *model) dispatch(key keymap.Action) tea.Cmd {
 		return m.addSelectionToPlaylist()
 	case keymap.AddTray:
 		m.addTraySelection()
-	case keymap.TrayHints:
-		if m.tab == trayTab {
-			m.trayWholeMode = !m.trayWholeMode
-		}
 	case keymap.MarkTray:
 		if item, ok := m.selected(); m.tab == trayTab && ok {
 			m.markTray(item)
@@ -150,6 +142,8 @@ func (m *model) dispatch(key keymap.Action) tea.Cmd {
 		case m.tab == queueTab && len(m.queue) > 0:
 			return m.namePlaylist(music.Action{Operation: music.SaveQueue})
 		}
+	case keymap.FocusSong:
+		m.focusPlayingSong()
 	case keymap.PlayPause:
 		return m.act(music.Action{Operation: music.Toggle})
 	case keymap.Next:
@@ -189,12 +183,14 @@ func (m *model) dispatch(key keymap.Action) tea.Cmd {
 		} else if m.canSwitchTrackColumn() {
 			m.showAlbumColumn[m.tab] = !m.showAlbumColumn[m.tab]
 		}
-	case keymap.ShuffleTray:
+	case keymap.DedupeTray:
 		if m.tab == trayTab {
-			m.shuffleTray()
+			m.dedupeTray()
 		}
 	case keymap.Shuffle:
-		if m.tab == queueTab && len(m.queue) > 1 {
+		if m.tab == trayTab {
+			m.shuffleTray()
+		} else if m.tab == queueTab && len(m.queue) > 1 {
 			return m.act(music.Action{Operation: music.Shuffle})
 		}
 	case keymap.Clear:

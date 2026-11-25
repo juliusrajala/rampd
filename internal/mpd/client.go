@@ -218,7 +218,9 @@ func track(fields []field) music.Track {
 		// Older MPD servers report whole seconds in the Time field.
 		length = max(0, duration(get(fields, "Time")))
 	}
-	return music.Track{Duration: length,
+	added, _ := time.Parse(time.RFC3339, get(fields, "added"))
+	modified, _ := time.Parse(time.RFC3339, get(fields, "Last-Modified"))
+	return music.Track{Duration: length, Added: added.UTC(), Modified: modified.UTC(),
 		URI: get(fields, "file"), Title: get(fields, "Title"), Artist: get(fields, "Artist"),
 		Album: get(fields, "Album"), AlbumArtist: get(fields, "AlbumArtist"), Genre: get(fields, "Genre"),
 		Disc: number(get(fields, "Disc")), Number: number(get(fields, "Track")),

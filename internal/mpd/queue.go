@@ -23,24 +23,13 @@ func replaceAndPlay(w *wire, tracks []music.Track) error {
 		adds = append(adds, command{"addid", []string{track.URI}})
 	}
 	fields, err := w.queryList(adds)
-	var staged []string
-	for _, f := range fields {
-		if f.key == "Id" {
-			staged = append(staged, f.value)
-		}
-	}
+	staged := stagedIDs(fields)
 	if err != nil {
 		var ack ackError
 		if errors.As(err, &ack) {
 			// An ACK ends the response. The connection is still usable and
 			// we can undo the earlier adds without touching the live entries.
-			var rollback []command
-			for _, id := range staged {
-				rollback = append(rollback, command{"deleteid", []string{id}})
-			}
-			if rollbackErr := w.runList(rollback); rollbackErr != nil {
-				return errors.Join(err, fmt.Errorf("remove staged Dream tracks: %w", rollbackErr))
-			}
+			return rollbackStaged(w, staged, err)
 		}
 		return err
 	}
@@ -57,6 +46,27 @@ func replaceAndPlay(w *wire, tracks []music.Track) error {
 	}
 	commands = append(commands, command{"playid", []string{staged[0]}})
 	return w.runList(commands)
+}
+
+func stagedIDs(fields []field) []string {
+	var ids []string
+	for _, f := range fields {
+		if f.key == "Id" {
+			ids = append(ids, f.value)
+		}
+	}
+	return ids
+}
+
+func rollbackStaged(w *wire, ids []string, cause error) error {
+	commands := make([]command, 0, len(ids))
+	for _, id := range ids {
+		commands = append(commands, command{"deleteid", []string{id}})
+	}
+	if err := w.runList(commands); err != nil {
+		return errors.Join(cause, fmt.Errorf("remove staged tracks: %w", err))
+	}
+	return cause
 }
 
 func replaceQueue(w *wire, tracks []music.Track, plan *music.QueueReplacement) error {
@@ -88,13 +98,13 @@ func replaceQueue(w *wire, tracks []music.Track, plan *music.QueueReplacement) e
 		keepID = plan.CurrentID
 	}
 	commands := make([]command, 0, len(tracks)+len(entries)+2)
-	// Add first. A failed add may leave extra entries, but cannot remove the
-	// original queue or interrupt playback.
+	// Add first so a rejected track cannot remove original entries.
 	for i, track := range tracks {
 		if i != plan.KeepAt {
 			commands = append(commands, command{"addid", []string{track.URI}})
 		}
 	}
+	numAdds := len(commands)
 	if plan.CurrentID >= 0 && keepID < 0 {
 		commands = append(commands, command{"stop", nil})
 	}
@@ -106,5 +116,16 @@ func replaceQueue(w *wire, tracks []music.Track, plan *music.QueueReplacement) e
 	if plan.KeepAt > 0 {
 		commands = append(commands, command{"moveid", []string{strconv.Itoa(keepID), strconv.Itoa(plan.KeepAt)}})
 	}
-	return w.runList(commands)
+	fields, err := w.queryList(commands)
+	var ack ackError
+	if errors.As(err, &ack) {
+		staged := stagedIDs(fields)
+		// MPD stops at the first error. If not all adds ran, no original
+		// entries were removed. Roll back only our successful adds.
+		if len(staged) < numAdds {
+			track := commands[len(staged)].args[0]
+			return rollbackStaged(w, staged, fmt.Errorf("cannot add %q: %w", track, err))
+		}
+	}
+	return err
 }
